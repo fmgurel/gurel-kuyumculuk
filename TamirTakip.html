@@ -495,13 +495,12 @@ function makeSupabaseApi(){
     async profiles(){ return chk(await sb.from("profiles").select("*").order("created_at")); },
     async setRole(id, role){ chk(await sb.from("profiles").update({ role }).eq("id", id)); },
     async changePassword(userId, yeni, eski){ chk(await sb.rpc("sifre_degistir", { p_user:userId, p_yeni:yeni, p_eski:eski ?? null })); },
-    // Gecikme uyarıları (Telegram)
-    async telegramKontrol(){ return chk(await sb.rpc("telegram_kontrol")); },
-    async telegramToken(t){ return chk(await sb.rpc("telegram_token_kaydet", { p_token:t })); },
-    async aliciKaydet(o){ return chk(await sb.rpc("bildirim_alici_kaydet", { p_id:o.id ?? null, p_ad:o.ad, p_tamir:o.tamir, p_siparis:o.siparis, p_musteri:o.musteri, p_aktif:o.aktif })); },
-    async aliciDavet(id){ return chk(await sb.rpc("bildirim_alici_davet", { p_id:id })); },
-    async aliciSil(id){ chk(await sb.rpc("bildirim_alici_sil", { p_id:id })); },
-    async bildirimDeneme(id){ return chk(await sb.rpc("bildirim_deneme", { p_id:id })); },
+    // Gecikme uyarıları (e-posta)
+    async epostaDurum(){ return chk(await sb.rpc("eposta_durum")); },
+    async epostaKod(yeni){ return chk(await sb.rpc("eposta_kod", { p_yeni: !!yeni })); },
+    async epostaUrl(u){ return chk(await sb.rpc("eposta_url_kaydet", { p_url:u })); },
+    async epostaAlicilar(a1, a2, aktif){ return chk(await sb.rpc("eposta_alicilar_kaydet", { p_alici1:a1, p_alici2:a2, p_aktif:aktif })); },
+    async epostaDeneme(){ return chk(await sb.rpc("eposta_deneme")); },
     async createUser(u, pw, role){
       const tmp = supabase.createClient(CFG.url, CFG.key, { auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:"tamir-yeni-hesap" } });
       const { data, error } = await tmp.auth.signUp({ email: toEmail(u), password: pw, options:{ data:{ username:u } } });
@@ -542,13 +541,12 @@ function makeDemoApi(){
   pays.push({ hafta:prevMon, tutar:550, odeme_tarihi:addDays(prevMon,5), odeyen:"u1", aciklama:null });
 
   const need = roles => { if(!me || !roles.includes(me.role)) throw new Error("Bu işlem için yetkin yok."); };
-  const bil = { token:false, bot:null, alicilar:[], son:[], seq:1 };
+  const ep = { url:null, anahtar:null, a1:"mert@ornek.com", a2:"calisan@ornek.com", aktif:true, son:[] };
   const bilY = () => { if(!me || me.username !== "gurel") throw new Error("Bu işlem sadece yönetici hesabıyla yapılabilir"); };
   const kod16 = () => [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(16).padStart(2, "0")).join("");
-  const bilDurum = () => JSON.parse(JSON.stringify({
-    bot:{ token_var:bil.token, kullanici:bil.bot && bil.bot.kullanici, ad:bil.bot && bil.bot.ad, hata:null, kontrol_ediliyor:bil.token && !bil.bot },
+  const epDurum = () => JSON.parse(JSON.stringify({ kurulu: !!(ep.url && ep.anahtar), alici1:ep.a1, alici2:ep.a2, aktif:ep.aktif,
     zamanlama:[{ ad:"gecikme-aksam", zaman:"0 15 * * 1-6", aktif:true }, { ad:"gecikme-sabah", zaman:"30 6 * * 1-6", aktif:true }],
-    alicilar:bil.alicilar.map(({ _p, ...a }) => a), son:bil.son.slice(0, 15) }));
+    son:ep.son.slice(0, 15).map(({ _t, ...g }) => g) }));
   const view = j => ({ ...JSON.parse(JSON.stringify(j)), musteri: me.role === "kuyumcu" ? (mus[j.id] ? {...mus[j.id]} : null) : null });
   const fileUrl = blob => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
   const sleep = () => new Promise(r => setTimeout(r, 60));
@@ -602,21 +600,22 @@ function makeDemoApi(){
       need(["kuyumcu"]); const h = users.find(u => u.id === userId);
       if(h.username === "gurel" && me.username !== "gurel") throw new Error("Yönetici hesabının şifresini sadece kendisi değiştirebilir");
     },
-    // Gecikme uyarıları (Telegram) — demo: bot 1 kontrolde, davetler 2 kontrolde bağlanır
-    async telegramKontrol(){ await sleep(); bilY();
-      if(bil.token && !bil.bot) bil.bot = { kullanici:"gurel_uyari_bot", ad:"Gürel Uyarı" };
-      bil.alicilar.forEach(a => { if(!a.bagli && a.davet_kodu && ++a._p >= 2){ Object.assign(a, { bagli:true, tg_ad:a.ad + " (Telegram)", davet_kodu:null }); } });
-      return bilDurum(); },
-    async telegramToken(t){ bilY(); if(!/^[0-9]{5,15}:[A-Za-z0-9_-]{30,60}$/.test(String(t).trim())) throw new Error("Bu bir bot token'ı gibi görünmüyor. BotFather'ın verdiği satırı (rakamlar:harfler) olduğu gibi yapıştır.");
-      bil.token = true; bil.bot = null; return bilDurum(); },
-    async aliciKaydet(o){ bilY(); if(!String(o.ad || "").trim()) throw new Error("Alıcının adını yaz"); if(!o.tamir && !o.siparis) throw new Error("En az bir uygulama seç (Tamir / Sipariş)");
-      if(o.id){ Object.assign(bil.alicilar.find(a => a.id === o.id), { ad:o.ad.trim(), tamir:o.tamir, siparis:o.siparis, musteri:o.musteri, aktif:o.aktif }); return o.id; }
-      const a = { id:bil.seq++, ad:o.ad.trim(), bagli:false, tg_ad:null, davet_kodu:kod16(), tamir:o.tamir, siparis:o.siparis, musteri:o.musteri, aktif:true, _p:0 }; bil.alicilar.push(a); return a.id; },
-    async aliciDavet(id){ bilY(); const a = bil.alicilar.find(x => x.id === id); a.davet_kodu = kod16(); a._p = 0; return a.davet_kodu; },
-    async aliciSil(id){ bilY(); bil.alicilar.splice(bil.alicilar.findIndex(x => x.id === id), 1); },
-    async bildirimDeneme(id){ bilY(); const a = bil.alicilar.find(x => x.id === id); if(!a.bagli) throw new Error("Bu alıcı henüz Telegram'a bağlanmadı");
-      bil.son.unshift({ zaman:new Date().toISOString(), alici:a.ad, tur:"deneme", madde:2, durum:200, hata:null }); return bilDurum(); },
-    _bil(){ return bil; },
+    // Gecikme uyarıları (e-posta) — demo: deneme 1 sn sonra "gönderildi" olur
+    async epostaDurum(){ await sleep(); bilY(); ep.son.forEach(g => { if(g.durum == null && Date.now() - g._t > 1000) g.durum = 200; }); return epDurum(); },
+    async epostaKod(yeni){ bilY(); if(!ep.anahtar || yeni) ep.anahtar = kod16() + kod16();
+      return `// Gürel Kuyumculuk · gecikme uyarısı e-postası (DEMO)\nconst ANAHTAR = '${ep.anahtar}';\n\nfunction doPost(e) {\n  // ...\n}\n\nfunction izinVer() {}\n`; },
+    async epostaUrl(u){ bilY(); u = String(u || "").trim();
+      if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/.test(u)) throw new Error("Bu bir web uygulaması adresi gibi görünmüyor. Dağıt → Web uygulaması → \"https://script.google.com/macros/s/…/exec\" adresini olduğu gibi yapıştır.");
+      if(!ep.anahtar) throw new Error("Önce kodu kopyala (anahtar oluşturulmadı)"); ep.url = u; return epDurum(); },
+    async epostaAlicilar(a1, a2, aktif){ bilY(); const re = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+      a1 = String(a1 || "").trim().toLowerCase() || null; a2 = String(a2 || "").trim().toLowerCase() || null;
+      if(!a1 && a2){ a1 = a2; a2 = null; } if(!a1) throw new Error("En az bir e-posta adresi yaz");
+      if(!re.test(a1) || (a2 && !re.test(a2))) throw new Error("E-posta adresi geçersiz"); if(a1 === a2) a2 = null;
+      Object.assign(ep, { a1, a2, aktif: aktif !== false }); return epDurum(); },
+    async epostaDeneme(){ bilY(); if(!ep.a1) throw new Error("Önce en az bir e-posta adresi kaydet");
+      if(!(ep.url && ep.anahtar)) throw new Error("Gmail bağlantısı kurulmamış (web uygulaması adresi yok)");
+      ep.son.unshift({ zaman:new Date().toISOString(), tur:"deneme", madde:0, alicilar:[ep.a1, ep.a2].filter(Boolean).join(", "), durum:null, hata:null, _t:Date.now() }); return epDurum(); },
+    _ep(){ return ep; },
     _as(username){ me = users.find(u => u.username === username); },
   };
 }
@@ -1357,119 +1356,77 @@ function openPwSheet(uid){
     </form>`);
 }
 
-/* ============ Gecikme uyarıları (Telegram) — sadece yönetici ============ */
+/* ============ Gecikme uyarıları (e-posta) — sadece yönetici ============ */
 const TUR_AD = { sabah:"Sabah", "akşam":"Akşam", deneme:"Deneme" };
-let BIL_T = null;
-const telegramLink = kod => `https://t.me/${S.bil.bot.kullanici}?start=${kod}`;
-const davetMesaji = (ad, link) => `Merhaba ${ad}, Gürel Kuyumculuk gecikme uyarılarını almak için bu bağlantıyı telefonunda aç ve Telegram'da BAŞLAT'a bas:\n${link}\n\n(Telegram yüklü olmalı. Bağlantı 3 gün geçerli.)`;
-function bilBekliyor(){ const b = S.bil; return !!b && (b.bot.kontrol_ediliyor || b.alicilar.some(a => !a.bagli && a.davet_kodu)); }
-function bilPoll(){
-  clearInterval(BIL_T);
-  BIL_T = setInterval(async () => {
-    if(!SH || !(SH.bildirim || SH.davet)){ clearInterval(BIL_T); BIL_T = null; return; }
-    if(!bilBekliyor() || document.visibilityState !== "visible" || SH.busy) return;
-    try{
-      const once = JSON.stringify(S.bil); SH.busy = true;
-      S.bil = await api.telegramKontrol();
-      if(!SH) return;
-      if(SH.davet) updDavet();
-      else if(SH.bildirim && JSON.stringify(S.bil) !== once && !$("#sheet").contains(document.activeElement)) renderBildirim();
-    }catch(_){} finally{ if(SH) SH.busy = false; }
-  }, 3000);
-}
-async function openBildirim(){
-  SH = { bildirim:true };
+let EP_T = null;
+const yaziyor = () => { const a = document.activeElement; return !!a && $("#sheet").contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && !a.readOnly; };
+async function openUyari(){
+  SH = { uyari:true };
   openSheet(`<div class="sh"><h2>Gecikme uyarıları</h2><button class="x" data-act="close">✕</button></div><div class="spin">Yükleniyor…</div>`);
-  try { S.bil = await api.telegramKontrol(); }
-  catch(e){ if(SH && SH.bildirim) $("#sheet").innerHTML = `<div class="sh"><h2>Gecikme uyarıları</h2><button class="x" data-act="close">✕</button></div><div class="err">${esc(trErr(e))}</div>`; return; }
-  if(SH && SH.bildirim){ renderBildirim(); bilPoll(); }
+  try { S.ep = await api.epostaDurum(); }
+  catch(e){ if(SH && SH.uyari) $("#sheet").innerHTML = `<div class="sh"><h2>Gecikme uyarıları</h2><button class="x" data-act="close">✕</button></div><div class="err">${esc(trErr(e))}</div>`; return; }
+  if(!SH || !SH.uyari) return;
+  SH.kurulumAc = !S.ep.kurulu;
+  if(SH.kurulumAc) await kodYukle();
+  if(SH && SH.uyari) renderUyari();
 }
-function renderBildirim(){
-  const b = S.bil, bot = b.bot, hazir = !!bot.kullanici;
-  const zm = b.zamanlama.length >= 2 && b.zamanlama.every(z => z.aktif);
-  const tokenForm = `<form id="tokenForm" autocomplete="off">
-      <div class="field"><label>Bot token'ı</label><input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="123456789:AA…" required>
-        <div class="hint">Token şifre gibidir; kimseyle paylaşma. Kaydedince şifreli saklanır ve bir daha gösterilmez.</div></div>
-      <button class="btn gold block" type="submit">Botu bağla</button>
-    </form>`;
-  let botHtml;
-  if(!bot.token_var) botHtml = `<div class="info">
-      <b style="color:var(--ink)">Önce bir Telegram botu oluştur (bir kez, 2 dakika):</b>
-      <ol style="margin:8px 0 0 18px; line-height:1.6">
-        <li>Telegram'da <a href="https://t.me/BotFather" target="_blank" rel="noopener" style="color:var(--gold)">@BotFather</a>'ı aç, <b>/newbot</b> yaz.</li>
-        <li>Bota bir ad ver (ör. <i>Gürel Kuyumculuk Uyarı</i>), sonra sonu <b>bot</b> ile biten bir kullanıcı adı (ör. <i>gurel_uyari_bot</i>).</li>
-        <li>BotFather'ın verdiği <b>token</b>'ı (rakamlar:harfler) kopyalayıp aşağıya yapıştır.</li>
-      </ol></div>${tokenForm}`;
-  else botHtml = `<div class="teslimbox" style="${bot.hata ? "background:var(--red-bg);border-color:#5c2b26" : ""}">
-      ${bot.hata ? `<b style="color:var(--red)">Bot bağlanamadı:</b> ${esc(bot.hata)}`
-        : hazir ? `✓ Bot bağlı: <b>@${esc(bot.kullanici)}</b>${bot.ad ? ` <span style="color:var(--muted)">(${esc(bot.ad)})</span>` : ""}`
-        : `Bot kontrol ediliyor…`}
-    </div>
-    ${SH.tokenAc || bot.hata ? tokenForm : `<button class="linkbtn" data-act="bil-token">Token'ı değiştir</button>`}`;
-  const al = b.alicilar.map(a => {
-    const durum = !a.aktif ? `<span class="badge b-gray">Kapalı</span>`
-      : a.bagli ? `<span class="badge b-ok">Bağlı ✓</span>` : a.davet_kodu ? `<span class="badge b-wait">Davet bekliyor</span>` : `<span class="badge b-late">Bağlı değil</span>`;
-    const kap = [a.tamir ? "Tamir" : "", a.siparis ? "Sipariş" : "", a.musteri ? "müşteri bilgisi" : "müşteri bilgisi yok"].filter(Boolean).join(" · ");
-    return `<div class="listrow ${a.aktif ? "" : "off"}">
-      <div style="min-width:0"><div class="nm">${esc(a.ad)} ${durum}</div>
-        <div class="dt">${esc(kap)}${a.bagli && a.tg_ad ? ` · Telegram: ${esc(a.tg_ad)}` : ""}</div></div>
-      <div class="btns">
-        ${a.bagli && a.aktif ? `<button class="btn sm" data-act="bil-deneme" data-id="${a.id}">Deneme mesajı</button>` : ""}
-        ${!a.bagli && hazir ? `<button class="btn sm wa" data-act="bil-davet" data-id="${a.id}">Davet bağlantısı</button>` : ""}
-        <button class="btn sm ghost" data-act="bil-duzenle" data-id="${a.id}">Düzenle</button>
-      </div></div>`; }).join("");
-  const son = b.son.map(g => `<div class="wrow" style="cursor:default"><span class="d" style="width:88px">${esc(fDateTime(g.zaman))}</span>
-      <span class="t">${esc(g.alici || "?")} · ${esc(TUR_AD[g.tur] || g.tur || "")}${g.madde ? ` · ${g.madde} madde` : ""}</span>
-      <span class="p">${g.durum === 200 ? `<span class="badge b-ok">İletildi</span>` : g.durum == null && !g.hata ? `<span class="badge b-wait">Gönderiliyor</span>`
-        : `<span class="badge b-late" title="${esc(g.hata || "")}">Hata</span>`}</span></div>
+async function kodYukle(){ try { SH.kod = await api.epostaKod(false); } catch(e){ SH.kod = ""; toast(trErr(e), true); } }
+function renderUyari(){
+  const d = S.ep, kur = d.kurulu && !SH.kurulumAc;
+  const zm = d.zamanlama.length >= 2 && d.zamanlama.every(z => z.aktif);
+  const adim = (n, t) => `<li style="margin-bottom:6px">${t}</li>`;
+  const kurulum = `<div class="info" style="color:var(--ink)">
+      <b>Gmail bağlantısı (bir kez, ~10 dakika, bilgisayardan):</b>
+      <ol style="margin:8px 0 0 18px; line-height:1.55; color:var(--muted)">
+        ${adim(1, `Uyarıların gönderileceği Gmail hesabıyla <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener" style="color:var(--gold)">script.google.com</a>'u aç → <b>Yeni proje</b>.`)}
+        ${adim(2, `Oradaki kodu tamamen sil; aşağıdaki kodu <b>Kodu kopyala</b> ile kopyalayıp yapıştır → <b>Kaydet</b> (Ctrl+S).`)}
+        ${adim(3, `Üstteki listeden <b>izinVer</b>'i seç → <b>Çalıştır</b>. Google izin ister: hesabını seç → “Google bu uygulamayı doğrulamadı” çıkarsa <b>Gelişmiş</b> → <b>…(güvenli değil) sayfasına git</b> → <b>İzin ver</b>. Bu kod yalnızca senin adına e-posta <b>gönderebilir</b>; e-postalarını okuyamaz.`)}
+        ${adim(4, `Sağ üstte <b>Dağıt → Yeni dağıtım</b> → tür ⚙ <b>Web uygulaması</b> → Yürütme: <b>Ben</b> → Erişim: <b>Herkes</b> → <b>Dağıt</b>.`)}
+        ${adim(5, `Çıkan <b>Web uygulaması URL</b>'sini (…/exec ile biter) aşağıya yapıştır.`)}
+      </ol></div>
+    <div class="field"><label>Apps Script kodu</label><textarea id="epKod" readonly spellcheck="false" style="min-height:140px; font-family:Consolas,monospace; font-size:12px; white-space:pre">${esc(SH.kod || "")}</textarea>
+      <div class="hint">Kod gizli bir anahtar içerir; başkası bu bağlantıyla e-posta gönderemez. Kodu kimseyle paylaşma.</div></div>
+    <div class="actions" style="margin-top:0"><button class="btn" type="button" data-act="ep-kopya">Kodu kopyala</button></div>
+    <form id="epUrlForm" autocomplete="off" style="margin-top:12px">
+      <div class="field"><label>Web uygulaması URL'si</label><input name="url" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec" required></div>
+      <button class="btn gold block" type="submit">Kaydet ve deneme e-postası gönder</button>
+    </form>
+    ${d.kurulu ? `<div style="margin-top:8px"><button class="linkbtn" data-act="ep-vazgec">Vazgeç (mevcut bağlantı kalsın)</button></div>` : ""}`;
+  const son = d.son.map(g => `<div class="wrow" style="cursor:default"><span class="d" style="width:88px">${esc(fDateTime(g.zaman))}</span>
+      <span class="t">${esc(TUR_AD[g.tur] || g.tur || "")}${g.madde ? ` · ${g.madde} madde` : g.tur === "deneme" ? "" : ""}</span>
+      <span class="p">${g.durum === 200 ? `<span class="badge b-ok">Gönderildi</span>` : g.durum == null && !g.hata ? `<span class="badge b-wait">Gönderiliyor</span>`
+        : `<span class="badge b-late">Hata</span>`}</span></div>
       ${g.hata && g.durum !== 200 ? `<div class="fire" style="margin:-4px 0 6px 98px;color:var(--red)">${esc(g.hata)}</div>` : ""}`).join("");
   $("#sheet").innerHTML = `<div class="sh"><h2>Gecikme uyarıları</h2><button class="x" data-act="close">✕</button></div>
-    <div class="info">Tamir ve Sipariş Takip'te geciken işler, <b>Pazartesi–Cumartesi 09:30 ve 18:00</b>'de aşağıdaki kişilere <b>Telegram</b>'dan gönderilir. Geciken bir şey yoksa mesaj gitmez.
+    <div class="info">Tamir ve Sipariş Takip'te geciken işler <b>Pazartesi–Cumartesi 09:30 ve 18:00</b>'de aşağıdaki <b>en fazla 2</b> adrese, senin Gmail'inden <b>e-posta</b> ile gönderilir. Geciken bir şey yoksa e-posta gitmez. Müşterilere hiçbir şey gönderilmez.
       <div style="margin-top:6px">Uyarıya girenler: beklenen tarihi geçen tamir / sipariş · tarihi girilmemiş, 7+ gündür bekleyen · gelmiş ama müşterinin 7+ gündür almadığı ürünler.</div></div>
     ${zm ? "" : `<div class="info warn">Zamanlanmış gönderim bulunamadı; kurulum tamamlanmamış olabilir.</div>`}
-    <div class="section" style="margin-top:4px">Telegram botu</div>
-    ${botHtml}
-    <div class="section">Alıcılar</div>
-    ${al || `<div class="fire">Henüz alıcı yok.</div>`}
-    ${hazir ? `<button class="btn gold block" style="margin-top:8px" data-act="bil-ekle">+ Alıcı ekle</button>`
-            : `<div class="fire">Alıcı eklemek için önce botu bağla.</div>`}
-    ${b.son.length ? `<div class="section">Son gönderimler</div><div class="wrows" style="border-top:none;margin-top:0">${son}</div>` : ""}`;
+    <div class="section" style="margin-top:4px">Alıcılar (en fazla 2)</div>
+    <form id="epAliciForm" autocomplete="off">
+      <div class="field"><label>1. e-posta</label><input name="a1" type="email" required value="${esc(d.alici1 || "")}"></div>
+      <div class="field"><label>2. e-posta (isteğe bağlı)</label><input name="a2" type="email" value="${esc(d.alici2 || "")}"></div>
+      <label class="chk"><input type="checkbox" name="aktif" ${d.aktif ? "checked" : ""}> Otomatik uyarılar açık</label>
+      <button class="btn block" type="submit">Alıcıları kaydet</button>
+    </form>
+    <div class="section">Gmail bağlantısı</div>
+    ${kur ? `<div class="teslimbox">✓ Gmail bağlı. Uyarılar senin Gmail hesabından gönderilir.</div>
+        <div class="actions" style="margin-top:0"><button class="btn gold" type="button" data-act="ep-deneme">Deneme e-postası gönder</button></div>
+        <div style="margin-top:8px"><button class="linkbtn" data-act="ep-kurulum">Kurulumu yeniden yap</button></div>` : kurulum}
+    ${d.son.length ? `<div class="section">Son gönderimler</div><div class="wrows" style="border-top:none;margin-top:0">${son}</div>` : ""}`;
 }
-function openAliciForm(id){
-  const a = id ? S.bil.alicilar.find(x => x.id === id) : { ad:"", tamir:true, siparis:true, musteri:true, aktif:true };
-  SH = { aliciForm:true, id: id || null };
-  const cb = (n, on, l, h) => `<label class="chk" style="margin:0 0 10px;align-items:flex-start"><input type="checkbox" name="${n}" ${on ? "checked" : ""} style="margin-top:3px"><span><b style="color:var(--ink)">${l}</b>${h ? `<br>${h}` : ""}</span></label>`;
-  openSheet(`<div class="sh"><h2>${id ? "Alıcıyı düzenle" : "Alıcı ekle"}</h2><button class="x" data-act="close">✕</button></div>
-    <form id="aliciForm" autocomplete="off">
-      <div class="field"><label>Ad</label><input name="ad" required value="${esc(a.ad)}" placeholder="Ör. Mert, Ayşe, Tolga usta"></div>
-      ${cb("tamir", a.tamir, "Tamir Takip uyarıları", "")}
-      ${cb("siparis", a.siparis, "Sipariş Takip uyarıları", "")}
-      ${cb("musteri", a.musteri, "Müşteri adı ve telefonu", "Kapalıysa mesajda müşteri bilgisi ve “müşteri almadı” listesi olmaz. <b>Tamirci için kapat.</b>")}
-      ${id ? cb("aktif", a.aktif, "Aktif", "Kapalıysa bu kişiye mesaj gitmez.") : ""}
-      <div class="actions"><button class="btn" type="button" data-act="bildirim">Vazgeç</button><button class="btn gold" type="submit">${id ? "Kaydet" : "Ekle ve davet bağlantısı al"}</button></div>
-      ${id ? `<div class="actions"><button class="btn danger" type="button" data-act="bil-sil" data-id="${id}">Alıcıyı sil</button></div>` : ""}
-    </form>`);
+function epTakip(){
+  clearTimeout(EP_T); let n = 0;
+  const tick = async () => {
+    if(!SH || !SH.uyari) return;
+    try { S.ep = await api.epostaDurum(); if(SH && SH.uyari && !yaziyor()) renderUyari(); } catch(_){}
+    if(++n < 8 && S.ep.son.some(g => g.durum == null && !g.hata)) EP_T = setTimeout(tick, 3000);
+  };
+  EP_T = setTimeout(tick, 3000);
 }
-function openDavet(id){
-  const a = S.bil.alicilar.find(x => x.id === id); if(!a) return openBildirim();
-  const link = telegramLink(a.davet_kodu);
-  SH = { davet:id, link, msg:davetMesaji(a.ad, link) };
-  openSheet(`<div class="sh"><h2>Davet · ${esc(a.ad)}</h2><button class="x" data-act="close">✕</button></div>
-    <div class="info"><b style="color:var(--ink)">${esc(a.ad)}</b> bu bağlantıyı telefonunda açıp Telegram'da <b>BAŞLAT</b>'a basınca bağlanır. Bağlantı 3 gün geçerli ve tek kişiliktir.</div>
-    <div class="kv"><span class="k">Bağlantı</span><span style="word-break:break-all"><b>${esc(link)}</b></span></div>
-    <div class="actions">
-      <button class="btn wa" data-act="bil-wa">WhatsApp'tan gönder</button>
-      <button class="btn" data-act="bil-kopya">Kopyala</button>
-    </div>
-    <div class="actions"><a class="btn ghost" style="flex:1;text-align:center;text-decoration:none" href="${esc(link)}" target="_blank" rel="noopener">Kendim için: bu cihazda aç</a></div>
-    <div class="teslimbox" id="davetDurum" style="background:var(--amber-bg);border-color:#4a3b16;color:var(--amber);margin-top:14px">⏳ Bağlanması bekleniyor…</div>
-    <div class="actions"><button class="btn ghost" data-act="bildirim">← Gecikme uyarılarına dön</button></div>`);
-  updDavet(); bilPoll();
-}
-function updDavet(){
-  const a = S.bil.alicilar.find(x => x.id === SH.davet), el = $("#davetDurum"); if(!el) return;
-  if(a && a.bagli){ el.style.cssText = "margin-top:14px"; el.innerHTML = `✓ <b>${esc(a.ad)}</b> bağlandı${a.tg_ad ? ` (Telegram: ${esc(a.tg_ad)})` : ""}. Artık uyarılar ona da gidecek.`; }
-  else if(a && !a.davet_kodu){ el.textContent = "Bağlantının süresi doldu; yeni bağlantı al."; }
+async function epDeneme(){
+  S.ep = await api.epostaDeneme();
+  toast("Deneme e-postası gönderildi; gelen kutunu kontrol et");
+  if(SH && SH.uyari){ renderUyari(); epTakip(); }
 }
 
 /* ============ Logo menüsü ============ */
@@ -1526,19 +1483,13 @@ document.addEventListener("click", async e => {
     else if(a === "menu") toggleMenu();
     else if(a === "siparis-git"){ closeMenu(); location.href = "SiparisTakip.html"; }
     else if(a === "users"){ closeMenu(); openUsersSheet(); }
-    else if(a === "bildirim"){ closeMenu(); await openBildirim(); }
-    else if(a === "bil-token"){ SH.tokenAc = true; renderBildirim(); const i = $("#tokenForm [name=token]"); if(i) i.focus(); }
-    else if(a === "bil-ekle") openAliciForm(null);
-    else if(a === "bil-duzenle") openAliciForm(Number(el.dataset.id));
-    else if(a === "bil-davet"){ const id = Number(el.dataset.id), a0 = S.bil.alicilar.find(x => x.id === id);
-      if(!a0.davet_kodu){ await api.aliciDavet(id); S.bil = await api.telegramKontrol(); } openDavet(id); }
-    else if(a === "bil-wa"){ window.open(`https://wa.me/?text=${encodeURIComponent(SH.msg)}`, "_blank"); }
-    else if(a === "bil-kopya"){ try { await navigator.clipboard.writeText(SH.link); toast("Bağlantı kopyalandı"); } catch(_){ toast("Kopyalanamadı; bağlantıyı elle seç", true); } }
-    else if(a === "bil-deneme"){ el.disabled = true; try { S.bil = await api.bildirimDeneme(Number(el.dataset.id)); toast("Deneme mesajı gönderildi; Telegram'ı kontrol et"); renderBildirim();
-        setTimeout(async () => { if(SH && SH.bildirim){ try { S.bil = await api.telegramKontrol(); if(SH && SH.bildirim) renderBildirim(); } catch(_){} } }, 4000);
-      } finally { el.disabled = false; } }
-    else if(a === "bil-sil"){ const id = Number(el.dataset.id), a0 = S.bil.alicilar.find(x => x.id === id);
-      if(await ask(`<b>${esc(a0.ad)}</b> alıcılardan silinsin mi? Artık uyarı almaz.`, "Sil", true)){ await api.aliciSil(id); toast("Alıcı silindi"); await openBildirim(); } }
+    else if(a === "bildirim"){ closeMenu(); await openUyari(); }
+    else if(a === "ep-kurulum"){ SH.kurulumAc = true; await kodYukle(); renderUyari(); }
+    else if(a === "ep-vazgec"){ SH.kurulumAc = false; renderUyari(); }
+    else if(a === "ep-kopya"){ const t = $("#epKod");
+      try { await navigator.clipboard.writeText(SH.kod || ""); toast("Kod kopyalandı; Apps Script'e yapıştır"); }
+      catch(_){ if(t){ t.focus(); t.select(); } toast("Otomatik kopyalanamadı; kod seçildi, Ctrl+C ile kopyala", true); } }
+    else if(a === "ep-deneme"){ el.disabled = true; try { await epDeneme(); } finally { el.disabled = false; } }
     else if(a === "wa"){
       const j = findJob(Number(el.dataset.id)), ph = waPhone(j && j.musteri?.telefon);
       if(!ph) return toast("Geçerli telefon numarası yok", true);
@@ -1656,20 +1607,14 @@ document.addEventListener("submit", async e => {
       if(back) openUsersSheet(); else closeSheet();
       toast(self ? "Şifren değiştirildi" : "Şifre sıfırlandı — kişiye ilet");
     }
-    else if(f.id === "tokenForm"){
-      const t = f.elements.token.value.trim(); if(!t) throw new Error("Token'ı yapıştır.");
-      S.bil = await api.telegramToken(t); f.elements.token.value = ""; SH.tokenAc = false;
-      toast("Token kaydedildi, bot kontrol ediliyor…"); renderBildirim(); bilPoll();
+    else if(f.id === "epAliciForm"){
+      S.ep = await api.epostaAlicilar(f.elements.a1.value, f.elements.a2.value, f.elements.aktif.checked);
+      toast("Alıcılar kaydedildi"); renderUyari();
     }
-    else if(f.id === "aliciForm"){
-      const o = { id:SH.id, ad:f.elements.ad.value.trim(), tamir:f.elements.tamir.checked, siparis:f.elements.siparis.checked,
-                  musteri:f.elements.musteri.checked, aktif:f.elements.aktif ? f.elements.aktif.checked : true };
-      if(!o.ad) throw new Error("Alıcının adını yaz.");
-      if(!o.tamir && !o.siparis) throw new Error("En az bir uygulama seç (Tamir / Sipariş).");
-      const id = await api.aliciKaydet(o);
-      S.bil = await api.telegramKontrol();
-      if(o.id){ toast("Kaydedildi"); SH = { bildirim:true }; renderBildirim(); bilPoll(); }
-      else openDavet(Number(id));
+    else if(f.id === "epUrlForm"){
+      S.ep = await api.epostaUrl(f.elements.url.value); SH.kurulumAc = false; renderUyari();
+      toast("Gmail bağlantısı kaydedildi");
+      await epDeneme();
     }
     else if(f.id === "payForm"){
       const t = parseNum(f.elements.tutar.value);
