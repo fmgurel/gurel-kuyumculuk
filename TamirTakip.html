@@ -157,6 +157,17 @@
   .photo{position:relative; border-radius:12px; overflow:hidden; background:var(--card); border:1px solid var(--line); margin-bottom:10px;}
   .photo img{display:block; width:100%; max-height:340px; object-fit:contain; background:#000;}
   .photobar{display:flex; gap:8px; margin-bottom:12px;}
+  .photobar .btn{min-width:0;}
+  .cam{position:fixed; inset:0; z-index:55; background:#000; display:flex; flex-direction:column;}
+  .cam video,.cam img{flex:1; min-height:0; width:100%; object-fit:contain; background:#000; display:block;}
+  .cambar{display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px; padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+    background:var(--bg2); border-top:1px solid var(--line);}
+  .cambar > :first-child{justify-self:start;} .cambar > :last-child{justify-self:end;}
+  .shutter{width:66px; height:66px; border-radius:50%; border:4px solid var(--gold); background:#f2ede3; cursor:pointer; box-shadow:inset 0 0 0 3px #000;}
+  .shutter:active{transform:scale(.94);} .shutter:focus-visible{outline:2px solid var(--gold); outline-offset:3px;}
+  .cammsg{margin:auto; max-width:440px; padding:24px 16px; text-align:center; color:var(--ink); line-height:1.55;}
+  .cammsg.bad{color:var(--amber);}
+  .cammsg .actions{justify-content:center; margin-top:16px;} .cammsg .actions .btn{white-space:nowrap;}
   .kv{display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:14px; margin-bottom:14px;}
   .kv .k{color:var(--muted);}
   .actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:16px;}
@@ -305,6 +316,111 @@ async function compressImage(file){
   const c = document.createElement("canvas"); c.width = Math.round(w * s); c.height = Math.round(h * s);
   c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
   return await new Promise(res => c.toBlob(res, "image/jpeg", 0.8));
+}
+
+/* ============ Bilgisayar kamerası ============
+   Telefonda dosya seçici zaten kamerayı önerir. Masaüstü tarayıcılar
+   kamerayı dosya seçiciden açmaz → kamerayı sayfanın içinde açıyoruz. */
+const MOBIL = !!(window.matchMedia && matchMedia("(pointer: coarse)").matches);
+const PC_KAMERA = !MOBIL && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+const CAM_KEY = "tamir-kamera";
+let CAM = null;
+const camSaved = () => { try { return localStorage.getItem(CAM_KEY) || ""; } catch(_) { return ""; } };
+const camSave = id => { try { localStorage.setItem(CAM_KEY, id || ""); } catch(_) {} };
+
+function camHata(err){
+  const n = err && err.name;
+  if(n === "NotAllowedError" || n === "SecurityError") return "Kameraya izin verilmedi.<br>Adres çubuğundaki kamera simgesine tıklayıp <b>İzin ver</b> de, sonra tekrar dene.";
+  if(n === "NotFoundError" || n === "OverconstrainedError" || n === "DevicesNotFoundError") return "Bu bilgisayarda kamera bulunamadı.<br>Fotoğrafı dosyadan seçebilirsin.";
+  if(n === "NotReadableError" || n === "TrackStartError" || n === "AbortError") return "Kamera başka bir programda açık olabilir (Zoom, Teams, WhatsApp vb.).<br>O programı kapatıp tekrar dene.";
+  return "Kamera açılamadı." + (err && err.message ? "<br><small>" + esc(err.message) + "</small>" : "");
+}
+function camStopStream(){ if(CAM && CAM.stream){ CAM.stream.getTracks().forEach(t => t.stop()); CAM.stream = null; } }
+function camClose(){
+  if(!CAM) return;
+  camStopStream();
+  if(CAM.shotUrl) URL.revokeObjectURL(CAM.shotUrl);
+  CAM.el.remove(); CAM = null;
+}
+function camMsg(html, bad){
+  if(!CAM) return;
+  CAM.el.innerHTML = `<div class="cammsg ${bad ? "bad" : ""}">${html}
+    ${bad ? `<div class="actions"><button class="btn gold" type="button" data-act="cam-retry">Tekrar dene</button>
+      <button class="btn" type="button" data-act="cam-file">🖼 Dosyadan seç</button>
+      <button class="btn ghost" type="button" data-act="cam-close">Vazgeç</button></div>`
+    : `<div class="actions"><button class="btn ghost" type="button" data-act="cam-close">Vazgeç</button></div>`}</div>`;
+}
+async function camOpen(){
+  camClose();
+  const el = document.createElement("div"); el.className = "cam"; el.id = "cam";
+  el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Kamera");
+  document.body.appendChild(el);
+  CAM = { el, stream:null, devs:[], idx:0, shot:null, shotUrl:null };
+  await camStart(camSaved());
+}
+async function camStart(devId){
+  const c = CAM; if(!c) return;
+  camStopStream();
+  if(c.shotUrl){ URL.revokeObjectURL(c.shotUrl); c.shotUrl = null; } c.shot = null;
+  camMsg("Kamera açılıyor…<br><small style=\"color:var(--muted)\">Tarayıcı izin isterse <b>İzin ver</b> de.</small>");
+  const v = { width:{ ideal:1920 }, height:{ ideal:1080 } };
+  if(devId) v.deviceId = { exact:devId };
+  let s;
+  try { s = await navigator.mediaDevices.getUserMedia({ video:v, audio:false }); }
+  catch(err){
+    if(CAM !== c) return;
+    if(devId && (err.name === "OverconstrainedError" || err.name === "NotFoundError")){ camSave(""); return camStart(""); }
+    return camMsg(camHata(err), true);
+  }
+  if(CAM !== c){ s.getTracks().forEach(t => t.stop()); return; }   // bu arada kapatıldı
+  c.stream = s;
+  try { c.devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput" && d.deviceId); } catch(_) { c.devs = []; }
+  if(CAM !== c) return;
+  const tr = s.getVideoTracks()[0], curId = (tr && tr.getSettings && tr.getSettings().deviceId) || "";
+  if(curId) camSave(curId);
+  c.idx = Math.max(0, c.devs.findIndex(d => d.deviceId === curId));
+  camLive();
+}
+function camLive(){
+  const c = CAM; if(!c || !c.stream) return;
+  if(c.shotUrl){ URL.revokeObjectURL(c.shotUrl); c.shotUrl = null; } c.shot = null;
+  c.el.innerHTML = `<video autoplay playsinline muted></video>
+    <div class="cambar">
+      <button class="btn" type="button" data-act="cam-close">Vazgeç</button>
+      <button class="shutter" type="button" data-act="cam-shot" aria-label="Fotoğraf çek" title="Fotoğraf çek (Enter)"></button>
+      ${c.devs.length > 1 ? `<button class="btn" type="button" data-act="cam-switch">🔄 Kamera değiştir</button>` : `<span></span>`}
+    </div>`;
+  const vid = c.el.querySelector("video"); vid.srcObject = c.stream;
+  const p = vid.play(); if(p && p.catch) p.catch(() => {});
+}
+async function camShot(){
+  const c = CAM; if(!c) return;
+  const vid = c.el.querySelector("video");
+  if(!vid || !vid.videoWidth){ toast("Görüntü henüz gelmedi, bir saniye sonra tekrar dene.", true); return; }
+  const cv = document.createElement("canvas"); cv.width = vid.videoWidth; cv.height = vid.videoHeight;
+  cv.getContext("2d").drawImage(vid, 0, 0, cv.width, cv.height);
+  const blob = await new Promise(r => cv.toBlob(r, "image/jpeg", 0.92));
+  if(CAM !== c || !blob) return;
+  c.shot = blob; c.shotUrl = URL.createObjectURL(blob);
+  c.el.innerHTML = `<img src="${c.shotUrl}" alt="Çekilen fotoğraf">
+    <div class="cambar">
+      <button class="btn" type="button" data-act="cam-again">↺ Tekrar çek</button>
+      <span></span>
+      <button class="btn gold" type="button" data-act="cam-use">✓ Kullan</button>
+    </div>`;
+}
+async function camUse(){
+  const c = CAM; if(!c || !c.shot) return;
+  const blob = await compressImage(c.shot);
+  camClose();
+  setFormPhoto(blob);
+}
+function setFormPhoto(blob){
+  if(!SH || !blob) return;
+  snapshotInputs();
+  if(SH.photoPreview && SH.photoPreview.startsWith("blob:")) URL.revokeObjectURL(SH.photoPreview);
+  SH.photoBlob = blob; SH.photoRemove = false; SH.photoPreview = URL.createObjectURL(blob);
+  rerenderJobForm();
 }
 
 /* ============ Veri katmanı: Supabase ============ */
@@ -725,7 +841,7 @@ function usersView(){
 /* ============ Pencereler ============ */
 let SH = null; // açık pencerenin durumu
 function openSheet(html){ $("#sheet").innerHTML = html; $("#modal").classList.remove("hidden"); document.body.style.overflow = "hidden"; }
-function closeSheet(){ $("#modal").classList.add("hidden"); $("#sheet").innerHTML = ""; document.body.style.overflow = ""; SH = null; }
+function closeSheet(){ camClose(); $("#modal").classList.add("hidden"); $("#sheet").innerHTML = ""; document.body.style.overflow = ""; SH = null; }
 
 function ask(msg, okLabel = "Evet", danger = false){
   return new Promise(res => {
@@ -742,7 +858,10 @@ function photoBlock(){
   const u = SH.photoPreview || (!SH.photoRemove && SH.job && SH.job.foto_path && S.urls[SH.job.foto_path]);
   return `${u ? `<div class="photo"><img src="${esc(u)}" alt=""></div>` : ""}
     <div class="photobar">
-      <label class="btn" style="flex:1;text-align:center">${u ? "Fotoğrafı değiştir" : "📷 Fotoğraf ekle"}<input type="file" accept="image/*" id="photoIn" hidden></label>
+      ${PC_KAMERA
+        ? `<button class="btn" type="button" style="flex:1" data-act="cam-open">📷 ${u ? "Yeniden çek" : "Kamerayla çek"}</button>
+           <label class="btn" style="flex:1;text-align:center">🖼 Dosyadan seç<input type="file" accept="image/*" id="photoIn" hidden></label>`
+        : `<label class="btn" style="flex:1;text-align:center">${u ? "Fotoğrafı değiştir" : "📷 Fotoğraf ekle"}<input type="file" accept="image/*" id="photoIn" hidden></label>`}
       ${u ? `<button class="btn danger" type="button" data-act="photo-rm">Kaldır</button>` : ""}
     </div>`;
 }
@@ -1217,6 +1336,14 @@ document.addEventListener("click", async e => {
     else if(a === "open-job") openJobSheet(Number(el.dataset.id));
     else if(a === "close") closeSheet();
     else if(a === "islem"){ const v = el.dataset.v; SH.islem.has(v) ? SH.islem.delete(v) : SH.islem.add(v); el.classList.toggle("on"); }
+    else if(a === "cam-open") await camOpen();
+    else if(a === "cam-close") camClose();
+    else if(a === "cam-retry") await camStart("");
+    else if(a === "cam-shot") await camShot();
+    else if(a === "cam-again") camLive();
+    else if(a === "cam-use") await camUse();
+    else if(a === "cam-switch"){ const c = CAM; if(c && c.devs.length > 1){ c.idx = (c.idx + 1) % c.devs.length; await camStart(c.devs[c.idx].deviceId); } }
+    else if(a === "cam-file"){ camClose(); const i = $("#photoIn"); if(i) i.click(); }
     else if(a === "photo-rm"){ snapshotInputs(); SH.photoBlob = null; SH.photoPreview = null; SH.photoRemove = true; rerenderJobForm(); }
     else if(a === "complete") openCompleteSheet();
     else if(a === "cancel-job"){ const j = SH.job; if(await ask(`#${j.id} ${esc(j.urun)} iptal edilsin mi? (Tamirci de görür.)`, "İptal et", true)){ await api.updateJob(j.id, { durum:"iptal" }); toast("İptal edildi"); closeSheet(); await loadAll(); } }
@@ -1269,7 +1396,18 @@ document.addEventListener("click", e => {
     try { el.showPicker(); } catch(_) {}
   }
 });
-document.addEventListener("keydown", e => { if(e.key === "Escape" && !$("#modal").classList.contains("hidden")) closeSheet(); });
+document.addEventListener("keydown", e => {
+  if(CAM){
+    if(e.key === "Escape"){ e.preventDefault(); camClose(); }
+    else if((e.key === "Enter" || e.key === " ") && !(e.target.closest && e.target.closest("button,input,select,textarea"))){
+      e.preventDefault();
+      if(CAM.shot) camUse().catch(err => toast(trErr(err), true));
+      else if(CAM.stream) camShot().catch(err => toast(trErr(err), true));
+    }
+    return;
+  }
+  if(e.key === "Escape" && !$("#modal").classList.contains("hidden")) closeSheet();
+});
 
 function snapshotInputs(){ if(!SH) return; SH.values = {}; $("#sheet").querySelectorAll("input[name],textarea[name],select[name]").forEach(el => { if(el.type !== "file") SH.values[el.name] = el.value; }); }
 function rerenderJobForm(){ const f = $("#jobForm"); if(!f) return; const sel = SH.islem; const wrap = document.createElement("div"); wrap.innerHTML = jobForm(SH.job); f.replaceWith(wrap.firstElementChild);
@@ -1280,10 +1418,7 @@ document.addEventListener("change", async e => {
   try{
     if(el.id === "pwShow"){ $("#pwForm").querySelectorAll("input[type=password],input[data-pw]").forEach(i => { i.dataset.pw = 1; i.type = el.checked ? "text" : "password"; }); return; }
     if(el.id === "photoIn" && el.files[0]){
-      snapshotInputs();
-      const blob = await compressImage(el.files[0]);
-      SH.photoBlob = blob; SH.photoRemove = false; SH.photoPreview = URL.createObjectURL(blob);
-      rerenderJobForm();
+      setFormPhoto(await compressImage(el.files[0]));
     } else if(el.dataset && el.dataset.act === "role"){
       const p = S.profiles.find(x => x.id === el.dataset.id), role = el.value || null;
       const lbl = role ? (role === "kuyumcu" ? "Kuyumcu" : "Tamirci") : "Yetkisiz";
