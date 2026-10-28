@@ -28,10 +28,21 @@
   /* Üst bar */
   .top{position:sticky; top:0; z-index:20; background:rgba(13,12,10,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--line);
        padding-top:env(safe-area-inset-top);}
-  .topin{display:flex; align-items:center; gap:12px; padding:10px 0;}
-  .topin img{height:44px; width:auto;}
-  .brand{font-weight:700; letter-spacing:1.5px; color:var(--gold); font-size:15px;}
-  .who{margin-left:auto; text-align:right; font-size:12px; color:var(--muted); line-height:1.3;}
+  .topin{display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:10px; padding:10px 0;}
+  .topin img{height:auto; max-height:66px; max-width:100%; width:auto; display:block;}
+  .logowrap{position:relative; justify-self:start; min-width:0;}
+  .logobtn{display:block; background:none; border:none; padding:0; cursor:pointer; border-radius:8px; max-width:100%;}
+  .logobtn:focus-visible{outline:2px solid var(--gold); outline-offset:3px;}
+  .umenu{position:absolute; top:calc(100% + 8px); left:0; z-index:40; min-width:210px; background:var(--card2); border:1px solid var(--gold-dim);
+         border-radius:12px; padding:6px; box-shadow:0 12px 32px rgba(0,0,0,.55);}
+  .umenu .uinfo{padding:8px 10px 10px; font-size:12.5px; color:var(--muted); border-bottom:1px solid var(--line); margin-bottom:4px; line-height:1.4;}
+  .umenu .uinfo b{color:var(--ink); font-size:14px;}
+  .umenu button{display:block; width:100%; text-align:left; background:none; border:none; padding:11px 10px; border-radius:8px; cursor:pointer; font-size:14px; color:var(--ink);}
+  .umenu button:hover{background:var(--card);}
+  .brand{font-weight:700; letter-spacing:2.5px; color:var(--gold); font-size:22px; text-align:center; white-space:nowrap;}
+  .who{justify-self:end; text-align:right; font-size:12px; color:var(--muted); line-height:1.35;}
+  @media (min-width:700px){ .topin img{max-height:84px;} .brand{font-size:28px; letter-spacing:3px;} .who{font-size:13px;} }
+  @media (max-width:380px){ .brand{font-size:18px; letter-spacing:1.5px;} }
   .who b{color:var(--ink); font-weight:600;}
   .linkbtn{background:none; border:none; color:var(--gold); cursor:pointer; font-size:12px; padding:0; text-decoration:underline;}
   .tabs{display:flex; gap:4px; overflow-x:auto; scrollbar-width:none; padding-bottom:0;}
@@ -116,6 +127,8 @@
   .field input,.field textarea,.field select{width:100%; background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:11px 12px; outline:none;}
   .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--gold-dim);}
   .field textarea{min-height:64px; resize:vertical;}
+  input[type=date]{cursor:pointer;}
+  input[type=date]::-webkit-calendar-picker-indicator{cursor:pointer; filter:invert(.75) sepia(1) saturate(3) hue-rotate(5deg);}
   .field .hint{font-size:11.5px; color:var(--faint); margin-top:4px;}
   .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
   .opts{display:flex; flex-wrap:wrap; gap:6px;}
@@ -164,6 +177,10 @@
   .toolbar{display:flex; gap:8px; justify-content:flex-end; margin-bottom:12px; flex-wrap:wrap;}
   .fisimg{display:block; width:100%; border-radius:10px; background:#fff; margin-bottom:12px;}
   .chk{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); margin:-4px 0 12px;}
+  .sigpad{display:block; width:100%; height:210px; background:#fff; border-radius:10px; border:2px dashed var(--gold-dim); touch-action:none; cursor:crosshair;}
+  .sigimg{display:block; max-width:100%; max-height:160px; background:#fff; border-radius:8px; padding:6px; margin:6px 0 4px;}
+  .beyan{font-size:13.5px; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:10px; line-height:1.45;}
+  .teslimbox{background:var(--green-bg); border:1px solid #2e5e40; border-radius:10px; padding:10px 12px; margin:4px 0 12px; font-size:13.5px;}
   #printArea{display:none;}
   @media print{
     html,body{background:#fff !important;}
@@ -237,6 +254,8 @@ function parseNum(s){
   return Number.isFinite(n) ? n : NaN;
 }
 const numIn = n => (n == null) ? "" : String(n).replace(".", ",");
+const fTRsaat = ts => { if(!ts) return ""; const d = new Date(ts); const z = n => String(n).padStart(2, "0");
+  return `${z(d.getDate())}.${z(d.getMonth() + 1)}.${d.getFullYear()} ${z(d.getHours())}:${z(d.getMinutes())}`; };
 const fTR = iso => { if(!iso) return ""; const [y,m,d] = String(iso).slice(0,10).split("-"); return `${d}.${m}.${y}`; };
 const hasMusteri = j => !!(j.musteri && (j.musteri.ad || j.musteri.telefon));
 // WhatsApp: "0532 111 22 33" → 905321112233
@@ -292,7 +311,7 @@ function makeSupabaseApi(){
   const sb = supabase.createClient(CFG.url, CFG.key, { auth: { persistSession:true, autoRefreshToken:true } });
   const toEmail = u => u.includes("@") ? u : u + USER_DOMAIN;
   const chk = ({data, error}) => { if(error) throw error; return data; };
-  const SEL = "*, job_musteri(ad, telefon)";
+  const SEL = "*, job_musteri(ad, telefon, imza_path)";
   const fix = j => { const m = Array.isArray(j.job_musteri) ? j.job_musteri[0] : j.job_musteri; return {...j, musteri: m || null}; };
   return {
     demo:false,
@@ -332,7 +351,14 @@ function makeSupabaseApi(){
       if(oldPath) await sb.storage.from("foto").remove([oldPath]);
     },
     async setPrice(id, price){ chk(await sb.rpc("fiyat_gir", { p_job:id, p_fiyat:price })); },
-    async deleteJob(id, path){ if(path) await sb.storage.from("foto").remove([path]); chk(await sb.from("jobs").delete().eq("id", id)); },
+    async deleteJob(id, path, imza){ const rm = [path, imza].filter(Boolean); if(rm.length) await sb.storage.from("foto").remove(rm); chk(await sb.from("jobs").delete().eq("id", id)); },
+    // Müşteriye teslim: imza (varsa) depoya, saat sunucudan (musteri_teslim RPC)
+    async deliver(id, blob){
+      let path = null;
+      if(blob){ path = `imza/${id}/${Date.now()}.png`; chk(await sb.storage.from("foto").upload(path, blob, { contentType:"image/png", upsert:false })); }
+      try { return chk(await sb.rpc("musteri_teslim", { p_job:id, p_imza:path })); }
+      catch(e){ if(path) await sb.storage.from("foto").remove([path]); throw e; }
+    },
     async photoUrls(paths){
       if(!paths.length) return {};
       const d = chk(await sb.storage.from("foto").createSignedUrls(paths, 3600));
@@ -359,7 +385,7 @@ function makeDemoApi(){
   let me = null, seq = 1;
   const jobs = [], mus = {}, pays = [];
   const J = (o, m) => { const j = { id:seq++, islem:null, aciklama:null, gonderilen_gram:null, donen_gram:null, beklenen_tarih:null, donus_tarihi:null,
-      durum:"tamirde", fiyat:null, fiyat_giren:null, fiyat_zamani:null, foto_path:null, musteri_haber:null, musteri_teslim_tarihi:null,
+      durum:"tamirde", fiyat:null, fiyat_giren:null, fiyat_zamani:null, foto_path:null, musteri_haber:null, musteri_teslim_tarihi:null, musteri_teslim_zamani:null, musteri_teslim_eden:null,
       created_by:"u1", created_at:new Date().toISOString(), ...o };
     jobs.push(j); if(m) mus[j.id] = m; return j; };
   const lastMon = addDays(weekStart(t), -7), prevMon = addDays(weekStart(t), -14);
@@ -400,6 +426,15 @@ function makeDemoApi(){
       j.fiyat = price; j.fiyat_giren = price == null ? null : me.id; j.fiyat_zamani = price == null ? null : new Date().toISOString();
     },
     async deleteJob(id){ need(["kuyumcu"]); jobs.splice(jobs.findIndex(x => x.id === id), 1); delete mus[id]; },
+    async deliver(id, blob){
+      need(["kuyumcu"]); const j = jobs.find(x => x.id === id);
+      if(j.durum !== "tamamlandi") throw new Error("Ürün henüz tamirden gelmedi");
+      if(j.musteri_teslim_zamani) throw new Error("Bu ürün zaten teslim edilmiş");
+      const z = new Date().toISOString();
+      Object.assign(j, { musteri_teslim_zamani:z, musteri_teslim_tarihi:todayISO(), musteri_teslim_eden:me.id });
+      if(mus[id]) mus[id].imza_path = blob ? await fileUrl(blob) : null;
+      return z;
+    },
     async photoUrls(paths){ const o = {}; paths.forEach(p => o[p] = p); return o; },
     async payments(){ need(["kuyumcu","tamirci"]); return pays.map(p => ({...p})).sort((a,b) => b.hafta.localeCompare(a.hafta)); },
     async markPaid(hafta, tutar, aciklama){ need(["kuyumcu"]); const i = pays.findIndex(p => p.hafta === hafta); const p = { hafta, tutar, aciklama, odeme_tarihi:todayISO(), odeyen:me.id }; if(i >= 0) pays[i] = p; else pays.push(p); },
@@ -431,7 +466,7 @@ async function loadAll(silent){
   try{
     const [open, closed, pays, profiles] = await Promise.all([api.openJobs(), api.closedJobs(), api.payments(), api.profiles()]);
     Object.assign(S, { open, closed, pays, profiles, fresh:false });
-    const paths = [...open, ...closed].map(j => j.foto_path).filter(p => p && !S.urls[p]);
+    const paths = [...open, ...closed].flatMap(j => [j.foto_path, j.musteri && j.musteri.imza_path]).filter(p => p && !S.urls[p]);
     if(paths.length) Object.assign(S.urls, await api.photoUrls(paths));
   }catch(e){ if(!silent) toast(trErr(e), true); }
   finally{ S.loading = false; }
@@ -478,10 +513,10 @@ function render(){
        <button class="linkbtn" data-act="demo-as" data-u="gurel">Kuyumcu ol</button>
        <button class="linkbtn" data-act="demo-as" data-u="usta">Tamirci ol</button></div>` : ""}
     <div class="top"><div class="wrap">
-      <div class="topin">
-        <img src="${LOGO}" alt="Gürel">
+      <div class="topin" data-user="${esc(S.me.username)}">
+        <div class="logowrap"><button class="logobtn" data-act="menu" title="Menü" aria-label="Menü" aria-haspopup="true"><img src="${LOGO}" alt="Gürel Kuyumculuk"></button></div>
         <div class="brand">TAMİR TAKİP</div>
-        <div class="who"><b>${esc(S.me.username)}</b> · ${k ? "Kuyumcu" : "Tamirci"}<br><button class="linkbtn" data-act="pw" data-uid="${S.me.id}">Şifre</button> · <button class="linkbtn" data-act="logout">Çıkış</button></div>
+        <div></div>
       </div>
       <div class="tabs">${tabs.map(([id,l,n]) => `<button class="tab ${S.tab===id?"on":""}" data-act="tab" data-tab="${id}">${l}${n!=null?`<span class="n">${n}</span>`:""}</button>`).join("")}</div>
     </div></div>
@@ -538,7 +573,7 @@ function jobCard(j, hazir){
   else right.push(`<span class="badge b-wait">Fiyat yok</span>`);
   if(late) right.push(`<span class="badge b-late">Gecikti</span>`);
   if(j.durum === "tamamlandi" && payOfJob(j)) right.push(`<span class="badge b-ok">Ödendi</span>`);
-  if(j.durum === "tamamlandi" && hasMusteri(j)) right.push(j.musteri_teslim_tarihi ? `<span class="badge b-gray">Müşteriye verildi</span>` : `<span class="badge b-wait">Müşteri bekliyor</span>`);
+  if(j.durum === "tamamlandi" && hasMusteri(j)) right.push(j.musteri_teslim_tarihi ? `<span class="badge b-gray">Müşteriye verildi${j.musteri?.imza_path ? " ✍" : ""}</span>` : `<span class="badge b-wait">Müşteri bekliyor</span>`);
   return `<div class="job ${late?"late":""}" data-act="open-job" data-id="${j.id}">
     ${thumb(j)}
     <div class="jb">
@@ -723,10 +758,7 @@ function jobForm(j){
       <div class="field"><label>Ad soyad</label><input name="m_ad" value="${esc(j.musteri?.ad || "")}"></div>
       <div class="field"><label>Telefon</label><input name="m_tel" type="tel" value="${esc(j.musteri?.telefon || "")}"></div>
     </div>
-    ${j.durum === "tamamlandi" ? `<div class="row2">
-      <div class="field"><label>Müşteriye teslim tarihi</label><input name="musteri_teslim_tarihi" type="date" value="${esc(j.musteri_teslim_tarihi || "")}"></div>
-      <div class="field"><label>Haber verildi</label><input disabled value="${j.musteri_haber ? esc(fDateTime(j.musteri_haber)) : "Henüz verilmedi"}"></div>
-    </div>` : `<div class="fire" style="margin-top:-6px">Müşteri girilirse, iş tamirden gelince <b>Teslime Hazır</b> listesine düşer.</div>`}
+    ${j.durum === "tamamlandi" ? teslimInfo(j) : `<div class="fire" style="margin-top:-6px">Müşteri girilirse, iş tamirden gelince <b>Teslime Hazır</b> listesine düşer.</div>`}
     <div class="actions">
       ${isNew ? `<button class="btn gold" type="submit">Kaydet</button><button class="btn" type="submit" data-fis="1">Kaydet + Emanet fişi</button>`
               : `<button class="btn gold" type="submit">Değişiklikleri kaydet</button>`}
@@ -739,10 +771,22 @@ function jobForm(j){
     ${!isNew ? `<div class="actions"><button class="btn ghost" type="button" data-act="fis" data-id="${j.id}">🧾 Emanet fişi</button></div>` : ""}
     ${!isNew ? `<div class="actions">
       ${j.durum === "tamirde" ? `<button class="btn ghost" type="button" data-act="cancel-job">İptal et</button>`
-                              : `<button class="btn ghost" type="button" data-act="reopen">Tamire geri al</button>`}
+                              : (j.musteri_teslim_zamani || j.musteri_teslim_tarihi ? "" : `<button class="btn ghost" type="button" data-act="reopen">Tamire geri al</button>`)}
       <button class="btn danger" type="button" data-act="delete-job">Sil</button>
     </div>` : ""}
   </form>`;
+}
+
+function teslimInfo(j){
+  const haber = `<div class="fire">Haber verildi: <b>${j.musteri_haber ? esc(fTRsaat(j.musteri_haber)) : "henüz verilmedi"}</b></div>`;
+  if(!j.musteri_teslim_zamani && !j.musteri_teslim_tarihi) return hasMusteri(j) ? haber : "";
+  const imza = j.musteri && j.musteri.imza_path, u = imza && S.urls[imza];
+  return `<div class="teslimbox">
+      ✓ Müşteriye teslim edildi: <b>${j.musteri_teslim_zamani ? esc(fTRsaat(j.musteri_teslim_zamani)) : esc(fTR(j.musteri_teslim_tarihi))}</b>
+      ${j.musteri_teslim_eden ? ` · teslim eden: <b>${esc(nameOf(j.musteri_teslim_eden) || "?")}</b>` : ""}
+      ${imza ? (u ? `<img class="sigimg" src="${esc(u)}" alt="Müşteri imzası"><div class="fire" style="margin:0">Müşteri imzası</div>` : `<div class="fire" style="margin:0">İmza kayıtlı (yüklenemedi)</div>`)
+             : `<div class="fire" style="margin:4px 0 0">${j.musteri_teslim_zamani ? "İmzasız teslim" : "Tarih elle girilmiş (imza yok)"}</div>`}
+    </div>${haber}`;
 }
 
 function openJobSheet(id){
@@ -792,6 +836,7 @@ function readJobForm(){
     fields.musteri_teslim_tarihi = v("musteri_teslim_tarihi") || null;
     if(fields.musteri_teslim_tarihi && fields.donus_tarihi && fields.musteri_teslim_tarihi < fields.donus_tarihi) throw new Error("Müşteriye teslim, tamirden dönüşten önce olamaz.");
   }
+  if(SH.job && SH.job.musteri && SH.job.musteri.imza_path && !v("m_ad") && !v("m_tel")) throw new Error("İmzalı teslim kaydı olan işte müşteri bilgisi silinemez.");
   return { fields, fiyat:fi, musteri:{ ad:v("m_ad") || null, telefon:v("m_tel") || null } };
 }
 
@@ -919,18 +964,20 @@ function durumText(j){
 }
 function excelData(){
   const jobs = allJobs().slice().sort((a, b) => a.id - b.id), N = x => x == null ? null : { d:Number(x) }, T = x => x ? { t:x } : null;
-  const isler = [["İş No","Ürün","İşlem","Açıklama","Durum","Veriliş","Beklenen","Tamirden dönüş","Gönderilen gr","Dönen gr","Fire gr (− = altın eklendi)","Tamirci fiyatı ₺","Fiyatı giren","Müşteri","Telefon","Haber verildi","Müşteriye teslim","Hafta başı","Hafta ödendi"]];
+  const isler = [["İş No","Ürün","İşlem","Açıklama","Durum","Veriliş","Beklenen","Tamirden dönüş","Gönderilen gr","Dönen gr","Fire gr (− = altın eklendi)","Tamirci fiyatı ₺","Fiyatı giren","Müşteri","Telefon","Haber verildi","Müşteriye teslim","Teslim saati","Teslim eden","İmza","Hafta başı","Hafta ödendi"]];
   jobs.forEach(j => { const pay = payOfJob(j);
     isler.push([j.id, j.urun, j.islem || "", j.aciklama || "", durumText(j), T(j.verilis_tarihi), T(j.beklenen_tarih), T(j.donus_tarihi),
       N(j.gonderilen_gram), N(j.donen_gram), N(fireOf(j)), N(j.fiyat), j.fiyat_giren ? nameOf(j.fiyat_giren) : "",
-      j.musteri?.ad || "", j.musteri?.telefon || "", j.musteri_haber ? fDateTime(j.musteri_haber) : "", T(j.musteri_teslim_tarihi),
+      j.musteri?.ad || "", j.musteri?.telefon || "", j.musteri_haber ? fTRsaat(j.musteri_haber) : "", T(j.musteri_teslim_tarihi),
+      j.musteri_teslim_zamani ? fTRsaat(j.musteri_teslim_zamani).slice(11) : "", j.musteri_teslim_eden ? nameOf(j.musteri_teslim_eden) : "",
+      j.musteri_teslim_tarihi ? (j.musteri?.imza_path ? "Var" : "Yok") : "",
       j.durum === "tamamlandi" && j.donus_tarihi ? T(weekStart(j.donus_tarihi)) : null, j.durum === "tamamlandi" ? (pay ? "Evet" : "Hayır") : ""]); });
   const haftalik = [["Hafta başı (Pzt)","Hafta","İş sayısı","Fiyatsız iş","Tamir bedeli ₺","Ödenen ₺","Ödeme tarihi","Fark ₺","Fire gr","Eklenen altın gr","Not"]];
   weeksData().filter(w => w.jobs.length || w.pay).forEach(w => haftalik.push([T(w.mon), weekLabel(w.mon), w.jobs.length, w.noPrice, N(w.total),
     w.pay ? N(w.pay.tutar) : null, w.pay ? T(w.pay.odeme_tarihi) : null, w.pay ? N(w.total - Number(w.pay.tutar)) : null,
     N(Math.round(w.fire * 100) / 100), N(Math.round(w.added * 100) / 100), w.pay?.aciklama || ""]));
   return [
-    { name:"İşler", rows:isler, widths:[7,24,20,28,16,11,11,13,12,10,14,13,12,18,15,15,14,11,11] },
+    { name:"İşler", rows:isler, widths:[7,24,20,28,16,11,11,13,12,10,14,13,12,18,15,16,14,10,12,7,11,11] },
     { name:"Haftalık", rows:haftalik, widths:[13,20,9,10,13,12,12,10,9,13,24] },
   ];
 }
@@ -949,6 +996,8 @@ const loadImg = src => new Promise(res => { if(!src) return res(null); const i =
 async function renderFis(j){
   const W = 820, P = 50, c = document.createElement("canvas"), x = c.getContext("2d");
   const logo = await loadImg(LOGO), foto = await loadImg(j.foto_path && S.urls[j.foto_path]);
+  const teslim = j.musteri_teslim_zamani || j.musteri_teslim_tarihi, imzaP = j.musteri && j.musteri.imza_path;
+  const imza = teslim && imzaP ? await loadImg(S.urls[imzaP]) : null;
   const F = (w, z) => `${w} ${z}px "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
   const INK = "#1b1a17", MUT = "#6b6356", GOLD = "#a8841f", LINE = "#d9cfb6";
   const wrap = (text, maxW) => { const out = []; String(text).split("\n").forEach(par => { let line = "";
@@ -964,7 +1013,7 @@ async function renderFis(j){
     T(FIRMA.adres, 17, "400", MUT, "center", y); y += 26;
     T("Tel: " + FIRMA.tel, 17, "400", MUT, "center", y); y += 34;
     HR(y, GOLD, 2); y += 22;
-    T("TAMİR EMANET FİŞİ", 28, "700", INK, "center", y); y += 46;
+    T(teslim ? "TAMİR EMANET VE TESLİM FİŞİ" : "TAMİR EMANET FİŞİ", 28, "700", INK, "center", y); y += 46;
     T(`Fiş No: #${j.id}`, 22, "700", INK, "left", y); T(`Tarih: ${fTR(j.verilis_tarihi)}`, 20, "400", INK, "right", y); y += 40;
     HR(y, LINE); y += 18;
     const rows = [["Müşteri", j.musteri?.ad || "—"], ["Telefon", j.musteri?.telefon || "—"], ["Ürün", j.urun], ["Yapılacak işlem", j.islem || "—"]];
@@ -980,6 +1029,17 @@ async function renderFis(j){
       const fw = foto.width * sc, fh = foto.height * sc;
       if(!dry){ x.drawImage(foto, (W - fw) / 2, y, fw, fh); x.strokeStyle = LINE; x.lineWidth = 1; x.strokeRect((W - fw) / 2, y, fw, fh); }
       y += fh + 20; }
+    if(teslim){
+      HR(y, GOLD, 2); y += 20;
+      T("TESLİM KAYDI", 22, "700", INK, "left", y); y += 36;
+      T(`Ürün müşteriye teslim edilmiştir: ${j.musteri_teslim_zamani ? fTRsaat(j.musteri_teslim_zamani) : fTR(j.musteri_teslim_tarihi)}`, 19, "600", INK, "left", y); y += 32;
+      T(`Ben ${j.musteri?.ad || "müşteri"}, bu ürünü eksiksiz olarak teslim aldım.`, 18, "400", MUT, "left", y); y += 34;
+      if(imza){ const ih = 130, iw = Math.min(W - 2 * P, imza.width * ih / imza.height);
+        if(!dry){ x.drawImage(imza, P, y, iw, iw * imza.height / imza.width > ih ? ih : iw * imza.height / imza.width); }
+        y += ih + 6; T("Teslim Alan (Müşteri) imzası", 16, "400", MUT, "left", y); y += 30; }
+      else if(imzaP){ T("(imza kayıtlı, bu cihazda yüklenemedi)", 16, "400", MUT, "left", y); y += 30; }
+      else { T("(imzasız teslim)", 16, "400", MUT, "left", y); y += 30; }
+    }
     HR(y, LINE); y += 18;
     T("Ürününüzü teslim alırken lütfen bu fişi gösteriniz.", 18, "400", MUT, "center", y); y += 70;
     const half = (W - 2 * P) / 2;
@@ -1017,6 +1077,52 @@ async function openFis(id){
     <div class="fire" style="margin-top:10px">Fişte tamirci fiyatı yer almaz.</div>`);
 }
 
+/* ============ Müşteriye teslim: imza ============ */
+function openTeslimSheet(id){
+  const j = findJob(id); if(!j) return;
+  const ad = j.musteri?.ad || "Müşteri";
+  SH = { teslim:{ id, pts:0 } };
+  openSheet(`<div class="sh"><h2>Müşteriye teslim · <span class="no">#${j.id}</span></h2><button class="x" data-act="close">✕</button></div>
+    <div class="kv"><span class="k">Müşteri</span><span>${esc(ad)}${j.musteri?.telefon ? " · " + esc(j.musteri.telefon) : ""}</span>
+      <span class="k">Ürün</span><span>${esc(j.urun)}</span>
+      <span class="k">Tarih / saat</span><span id="teslimSaat">${esc(fTRsaat(new Date()))} <span style="color:var(--muted)">(kayıt anında sunucudan alınır)</span></span></div>
+    <div class="beyan">Ben <b>${esc(ad)}</b>, <b>#${j.id} ${esc(j.urun)}</b> ürünümü eksiksiz olarak teslim aldım.</div>
+    <canvas class="sigpad" id="sigpad"></canvas>
+    <div class="fire" style="margin-top:6px">Müşteri yukarıdaki beyaz alana parmağıyla imza atsın.</div>
+    <div class="actions">
+      <button class="btn" type="button" data-act="sig-clear">Temizle</button>
+      <button class="btn gold" type="button" data-act="sig-save" id="sigSave" disabled>✓ İmzala ve teslim et</button>
+    </div>
+    <div class="alt" style="text-align:center;margin-top:12px"><button class="linkbtn" data-act="imzasiz" data-id="${j.id}">İmza alamıyorum, imzasız teslim et</button></div>`);
+  initSigPad($("#sigpad"));
+}
+function initSigPad(cv){
+  const dpr = window.devicePixelRatio || 1, r = cv.getBoundingClientRect();
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  const x = cv.getContext("2d"); x.scale(dpr, dpr);
+  const clear = () => { x.fillStyle = "#fff"; x.fillRect(0, 0, r.width, r.height); SH.teslim.pts = 0; updSig(); };
+  x.lineWidth = 2.6; x.lineCap = "round"; x.lineJoin = "round"; x.strokeStyle = "#111";
+  let down = false, last = null;
+  const pos = e => { const b = cv.getBoundingClientRect(); return { x:e.clientX - b.left, y:e.clientY - b.top }; };
+  cv.onpointerdown = e => { e.preventDefault(); down = true; last = pos(e); try { cv.setPointerCapture(e.pointerId); } catch(_){}
+    x.fillStyle = "#111"; x.beginPath(); x.arc(last.x, last.y, 1.3, 0, Math.PI * 2); x.fill(); SH.teslim.pts++; };
+  cv.onpointermove = e => { if(!down) return; e.preventDefault(); const p = pos(e);
+    x.beginPath(); x.moveTo(last.x, last.y); x.lineTo(p.x, p.y); x.stroke(); last = p; SH.teslim.pts++; };
+  cv.onpointerup = cv.onpointercancel = () => { down = false; updSig(); };
+  SH.teslim.clear = clear; clear();
+}
+function updSig(){ const b = $("#sigSave"); if(b) b.disabled = !(SH && SH.teslim && SH.teslim.pts >= 8); }
+async function sigBlob(){
+  const cv = $("#sigpad"), max = 900, sc = Math.min(1, max / cv.width);
+  const c = document.createElement("canvas"); c.width = Math.round(cv.width * sc); c.height = Math.round(cv.height * sc);
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(cv, 0, 0, c.width, c.height);
+  return await new Promise(res => c.toBlob(res, "image/png"));
+}
+async function doDeliver(id, blob){
+  const z = await api.deliver(id, blob);
+  closeSheet(); toast(`#${id} müşteriye teslim edildi · ${fTRsaat(z || new Date())}`); await loadAll();
+}
+
 /* ============ Şifre ============ */
 function openPwSheet(uid){
   const self = uid === S.me.id, p = S.profiles.find(x => x.id === uid) || S.me;
@@ -1031,6 +1137,20 @@ function openPwSheet(uid){
     </form>`);
 }
 
+/* ============ Logo menüsü ============ */
+function closeMenu(){ const m = document.querySelector(".umenu"); if(m) m.remove(); }
+function toggleMenu(){
+  if(document.querySelector(".umenu")) return closeMenu();
+  const w = document.querySelector(".logowrap"); if(!w || !S.me) return;
+  const d = document.createElement("div"); d.className = "umenu"; d.setAttribute("role", "menu");
+  d.innerHTML = `<div class="uinfo"><b>${esc(S.me.username)}</b><br>${isK() ? "Kuyumcu" : "Tamirci"}</div>
+    <button role="menuitem" data-act="pw" data-uid="${S.me.id}">🔑 Şifre değiştir</button>
+    <button role="menuitem" data-act="logout">↩ Çıkış</button>`;
+  w.appendChild(d);
+}
+document.addEventListener("click", e => { if(!e.target.closest(".logowrap")) closeMenu(); }, true);
+document.addEventListener("keydown", e => { if(e.key === "Escape") closeMenu(); });
+
 /* ============ Olaylar ============ */
 document.addEventListener("click", async e => {
   const el = e.target.closest("[data-act]"); if(!el) return;
@@ -1038,7 +1158,7 @@ document.addEventListener("click", async e => {
   try{
     if(a === "tab"){ S.tab = el.dataset.tab; render(); window.scrollTo(0,0); }
     else if(a === "auth-mode"){ S.authMode = el.dataset.m; S.authErr = ""; render(); }
-    else if(a === "logout"){ await api.signOut(); Object.assign(S, { me:null, tab:"tamirde", open:[], closed:[], pays:[], profiles:[], urls:{}, q:"" }); render(); }
+    else if(a === "logout"){ closeMenu(); await api.signOut(); Object.assign(S, { me:null, tab:"tamirde", open:[], closed:[], pays:[], profiles:[], urls:{}, q:"" }); render(); }
     else if(a === "recheck"){ await boot(); }
     else if(a === "demo-as"){ api._as(el.dataset.u); await boot(); }
     else if(a === "new") openJobSheet(null);
@@ -1049,12 +1169,15 @@ document.addEventListener("click", async e => {
     else if(a === "complete") openCompleteSheet();
     else if(a === "cancel-job"){ const j = SH.job; if(await ask(`#${j.id} ${esc(j.urun)} iptal edilsin mi? (Tamirci de görür.)`, "İptal et", true)){ await api.updateJob(j.id, { durum:"iptal" }); toast("İptal edildi"); closeSheet(); await loadAll(); } }
     else if(a === "reopen"){ const j = SH.job; if(await ask(`#${j.id} tekrar 'tamirde' durumuna alınsın mı? Dönüş tarihi, dönen gram ve müşteri teslim bilgisi silinir.`, "Tamire geri al")){ await api.updateJob(j.id, { durum:"tamirde", donus_tarihi:null, donen_gram:null, musteri_teslim_tarihi:null, musteri_haber:null }); toast("Tamire geri alındı"); closeSheet(); await loadAll(); } }
-    else if(a === "delete-job"){ const j = SH.job; if(await ask(`#${j.id} ${esc(j.urun)} kalıcı olarak silinsin mi? Bu geri alınamaz.`, "Sil", true)){ await api.deleteJob(j.id, j.foto_path); toast("Silindi"); closeSheet(); await loadAll(); } }
+    else if(a === "delete-job"){ const j = SH.job, imza = j.musteri && j.musteri.imza_path;
+      if(await ask(`#${j.id} ${esc(j.urun)} kalıcı olarak silinsin mi? Bu geri alınamaz.${imza ? "<br><b>Müşterinin teslim imzası da silinir.</b>" : ""}`, "Sil", true)){
+        await api.deleteJob(j.id, j.foto_path, imza && !imza.startsWith("data:") ? imza : null); toast("Silindi"); closeSheet(); await loadAll(); } }
     else if(a === "wtoggle"){ const w = el.dataset.w; const cur = weekStart(todayISO()); S.expanded[w] = !(S.expanded[w] ?? (w === cur)); render(); }
     else if(a === "pay") openPaySheet(el.dataset.w);
     else if(a === "unpay"){ if(await ask(`${weekLabel(el.dataset.w)} haftasının ödeme kaydı silinsin mi?`, "Geri al", true)){ await api.unmarkPaid(el.dataset.w); toast("Ödeme kaydı silindi"); await loadAll(); } }
     else if(a === "hf"){ S.hfilter = el.dataset.v; render(); }
     else if(a === "excel") exportExcel();
+    else if(a === "menu") toggleMenu();
     else if(a === "wa"){
       const j = findJob(Number(el.dataset.id)), ph = waPhone(j && j.musteri?.telefon);
       if(!ph) return toast("Geçerli telefon numarası yok", true);
@@ -1062,11 +1185,13 @@ document.addEventListener("click", async e => {
       await api.updateJob(j.id, { musteri_haber:new Date().toISOString() });
       toast("Haber verildi olarak kaydedildi"); if(SH && SH.job) closeSheet(); await loadAll();
     }
-    else if(a === "mteslim"){
-      const j = findJob(Number(el.dataset.id));
-      if(await ask(`#${j.id} ${esc(j.urun)} — <b>${esc(j.musteri?.ad || "müşteri")}</b> teslim aldı olarak işaretlensin mi? (Tarih: bugün)`, "Teslim edildi")){
-        await api.updateJob(j.id, { musteri_teslim_tarihi:todayISO() }); toast(`#${j.id} müşteriye teslim edildi`); closeSheet(); await loadAll(); }
-    }
+    else if(a === "mteslim") openTeslimSheet(Number(el.dataset.id));
+    else if(a === "sig-clear") SH.teslim.clear();
+    else if(a === "sig-save"){ el.disabled = true; const id = SH.teslim.id;
+      try { await doDeliver(id, await sigBlob()); } catch(err){ el.disabled = false; throw err; } }
+    else if(a === "imzasiz"){ const id = Number(el.dataset.id), j = findJob(id);
+      if(await ask(`#${id} ${esc(j.urun)} <b>imzasız</b> olarak teslim edilsin mi? Kayıtta "imzasız teslim" yazacak; inkâr durumunda kanıtın zayıf olur.`, "İmzasız teslim et", true)) await doDeliver(id, null);
+      else openTeslimSheet(id); }
     else if(a === "fis") await openFis(Number(el.dataset.id));
     else if(a === "fis-dl"){ saveBlob(SH.fis.blob, SH.fis.name); }
     else if(a === "fis-print"){ window.print(); }
@@ -1075,10 +1200,17 @@ document.addEventListener("click", async e => {
       try { await navigator.share({ files:[file], title:`Emanet fişi #${f.id}`, text:`Gürel Kuyumculuk emanet fişi #${f.id}` }); }
       catch(err){ if(err && err.name !== "AbortError") saveBlob(f.blob, f.name); }
     }
-    else if(a === "pw") openPwSheet(el.dataset.uid);
+    else if(a === "pw"){ closeMenu(); openPwSheet(el.dataset.uid); }
   }catch(err){ toast(trErr(err), true); }
 });
 $("#modal").addEventListener("click", e => { if(e.target.id === "modal") closeSheet(); });
+// Tarih alanının herhangi bir yerine tıklanınca takvim açılsın (sadece simgeye değil)
+document.addEventListener("click", e => {
+  const el = e.target;
+  if(el instanceof HTMLInputElement && el.type === "date" && !el.disabled && !el.readOnly && typeof el.showPicker === "function"){
+    try { el.showPicker(); } catch(_) {}
+  }
+});
 document.addEventListener("keydown", e => { if(e.key === "Escape" && !$("#modal").classList.contains("hidden")) closeSheet(); });
 
 function snapshotInputs(){ if(!SH) return; SH.values = {}; $("#sheet").querySelectorAll("input[name],textarea[name],select[name]").forEach(el => { if(el.type !== "file") SH.values[el.name] = el.value; }); }
