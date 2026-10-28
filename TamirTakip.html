@@ -595,16 +595,21 @@ const nameOf = id => gorunenAd((S.profiles.find(p => p.id === id) || {}).usernam
 const allJobs = () => [...S.open, ...S.closed];
 const findJob = id => allJobs().find(j => j.id === id);
 
-async function loadAll(silent){
-  if(S.loading) return; S.loading = true;
+// Yükleme sürerken yeni istek gelirse (ör. kayıttan hemen sonra) bitince bir kez daha yükle
+let yukleme = null, tekrarYukle = false;
+function loadAll(silent){
+  if(yukleme){ tekrarYukle = true; return yukleme; }
+  S.loading = true;
+  yukleme = (async () => { do { tekrarYukle = false; await loadOnce(silent); } while(tekrarYukle); S.loading = false; yukleme = null; render(); })();
+  return yukleme;
+}
+async function loadOnce(silent){
   try{
     const [open, closed, pays, profiles] = await Promise.all([api.openJobs(), api.closedJobs(), api.payments(), api.profiles()]);
     Object.assign(S, { open, closed, pays, profiles, fresh:false });
     const paths = [...open, ...closed].flatMap(j => [j.foto_path, j.musteri && j.musteri.imza_path]).filter(p => p && !S.urls[p]);
     if(paths.length) Object.assign(S.urls, await api.photoUrls(paths));
   }catch(e){ if(!silent) toast(trErr(e), true); }
-  finally{ S.loading = false; }
-  render();
 }
 
 /* ============ Haftalar ============ */
@@ -1315,7 +1320,8 @@ function toggleMenu(){
   if(document.querySelector(".umenu")) return closeMenu();
   const w = document.querySelector(".logowrap"); if(!w || !S.me) return;
   const d = document.createElement("div"); d.className = "umenu"; d.setAttribute("role", "menu");
-  d.innerHTML = `<button role="menuitem" data-act="pw" data-uid="${S.me.id}">🔑 Şifre değiştir</button>
+  d.innerHTML = `${isK() ? `<button role="menuitem" data-act="siparis-git">↗ Sipariş Takip</button>` : ""}
+    <button role="menuitem" data-act="pw" data-uid="${S.me.id}">🔑 Şifre değiştir</button>
     <button role="menuitem" data-act="logout">↩ Çıkış</button>`;
   w.appendChild(d);
 }
@@ -1357,6 +1363,7 @@ document.addEventListener("click", async e => {
     else if(a === "hf"){ S.hfilter = el.dataset.v; render(); }
     else if(a === "excel") exportExcel();
     else if(a === "menu") toggleMenu();
+    else if(a === "siparis-git"){ closeMenu(); location.href = "SiparisTakip.html"; }
     else if(a === "wa"){
       const j = findJob(Number(el.dataset.id)), ph = waPhone(j && j.musteri?.telefon);
       if(!ph) return toast("Geçerli telefon numarası yok", true);
