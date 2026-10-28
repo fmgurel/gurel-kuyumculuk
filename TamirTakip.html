@@ -641,7 +641,7 @@ function jobForm(j){
     </div>
     ${j.durum === "tamamlandi" ? `<div class="row2">
       <div class="field"><label>Dönüş tarihi</label><input name="donus_tarihi" type="date" required value="${esc(j.donus_tarihi || "")}"></div>
-      <div class="field"><label>Dönen gram</label><input name="donen_gram" inputmode="decimal" value="${esc(numIn(j.donen_gram))}"></div>
+      <div class="field"><label>Dönen gram (isteğe bağlı)</label><input name="donen_gram" inputmode="decimal" value="${esc(numIn(j.donen_gram))}" placeholder="Girilmedi"></div>
     </div>` : ""}
     <div class="section">Müşteri (tamirci görmez)</div>
     <div class="row2">
@@ -728,7 +728,7 @@ function openCompleteSheet(){
     <form id="completeForm">
       <div class="row2">
         <div class="field"><label>Dönüş tarihi</label><input name="donus_tarihi" type="date" required value="${todayISO()}"></div>
-        <div class="field"><label>Dönen gram</label><input name="donen_gram" inputmode="decimal" value="${esc(numIn(g))}" placeholder="0,00"></div>
+        <div class="field"><label>Dönen gram (isteğe bağlı)</label><input name="donen_gram" inputmode="decimal" value="" placeholder="Tartıp yaz"></div>
       </div>
       <div class="fire" id="fireOut"></div>
       <div class="field bigprice"><label>Tamir bedeli (₺)</label><input name="fiyat" inputmode="decimal" value="${esc(numIn(fi))}" placeholder="Henüz yok"></div>
@@ -736,7 +736,7 @@ function openCompleteSheet(){
       <button class="btn gold block" type="submit">✓ Teslim alındı</button>
     </form>`);
   const upd = () => { const d = parseNum($("#completeForm").elements.donen_gram.value);
-    $("#fireOut").textContent = (g != null && d != null && !Number.isNaN(d)) ? fireText(fireOf({ gonderilen_gram:g, donen_gram:d })) : ""; };
+    $("#fireOut").textContent = (g != null && d != null && !Number.isNaN(d)) ? fireText(fireOf({ gonderilen_gram:g, donen_gram:d })) : (g != null ? "Dönen gram girilmezse fire hesaplanmaz." : ""); };
   $("#completeForm").elements.donen_gram.addEventListener("input", upd); upd();
 }
 async function doComplete(){
