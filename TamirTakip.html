@@ -249,7 +249,7 @@ function waPhone(t){
   return d.length >= 11 ? d : null;
 }
 const waMesaj = j => { const ad = (j.musteri?.ad || "").trim();
-  return `Merhaba${ad ? " " + ad : ""}, Gürel Kuyumculuk'a tamir için bıraktığınız ${j.urun} hazırdır. Mağazamızdan teslim alabilirsiniz. (İş no: #${j.id})`; };
+  return `Merhaba${ad ? " " + ad : ""}, Gürel Kuyumculuk'a tamir için bıraktığınız ${j.urun} hazırdır. Mağazamızdan teslim alabilirsiniz.`; };
 function normUser(u){
   const map = {"ç":"c","ğ":"g","ı":"i","ö":"o","ş":"s","ü":"u","Ç":"c","Ğ":"g","İ":"i","I":"i","Ö":"o","Ş":"s","Ü":"u"};
   return String(u || "").trim().replace(/[çğıöşüÇĞİIÖŞÜ]/g, c => map[c]).toLowerCase().replace(/\s+/g, ".");
