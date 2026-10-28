@@ -370,6 +370,16 @@ function makeSupabaseApi(){
     async profiles(){ return chk(await sb.from("profiles").select("*").order("created_at")); },
     async setRole(id, role){ chk(await sb.from("profiles").update({ role }).eq("id", id)); },
     async changePassword(userId, yeni, eski){ chk(await sb.rpc("sifre_degistir", { p_user:userId, p_yeni:yeni, p_eski:eski ?? null })); },
+    async createUser(u, pw, role){
+      const tmp = supabase.createClient(CFG.url, CFG.key, { auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:"tamir-yeni-hesap" } });
+      const { data, error } = await tmp.auth.signUp({ email: toEmail(u), password: pw, options:{ data:{ username:u } } });
+      if(error) throw error;
+      if(!data.user || (Array.isArray(data.user.identities) && data.user.identities.length === 0)) throw new Error("User already registered");
+      try { await tmp.auth.signOut(); } catch(_){}
+      if(role){ try { chk(await sb.from("profiles").update({ role }).eq("id", data.user.id)); }
+        catch(e){ throw new Error("Hesap açıldı ama yetki verilemedi; listeden elle seçin."); } }
+      return data.user.id;
+    },
   };
 }
 
@@ -441,6 +451,11 @@ function makeDemoApi(){
     async unmarkPaid(hafta){ need(["kuyumcu"]); const i = pays.findIndex(p => p.hafta === hafta); if(i >= 0) pays.splice(i, 1); },
     async profiles(){ need(["kuyumcu","tamirci"]); return users.map(u => ({...u})); },
     async setRole(id, role){ need(["kuyumcu"]); if(id === me.id) throw new Error("Kendi rolünü değiştiremezsin"); users.find(u => u.id === id).role = role; },
+    async createUser(u, pw, role){
+      need(["kuyumcu"]); if(users.find(z => z.username === u)) throw new Error("User already registered");
+      if(String(pw).length < 6) throw new Error("Password should be at least 6 characters");
+      const x = { id:"u" + (users.length + 1) + "x", username:u, role:role || null, created_at:new Date().toISOString() }; users.push(x); return x.id;
+    },
     async changePassword(userId, yeni, eski){
       if(!me) throw new Error("Giriş yapmalısın");
       if(String(yeni || "").length < 6) throw new Error("Şifre en az 6 karakter olmalı");
@@ -694,7 +709,8 @@ function historyView(){
 function usersView(){
   const opts = [["","Onay bekliyor / erişim yok"],["kuyumcu","Kuyumcu"],["tamirci","Tamirci"]];
   const benGurel = S.me.username === "gurel";
-  return `<div class="info">Yeni kişi uygulamada <b>Hesap oluştur</b> der; burada ona yetki verirsin. Tamirci sadece işleri görür ve teslim alınmamış işlere fiyat girer; müşteri bilgilerini göremez. Şifresini unutan olursa <b>Şifre sıfırla</b> ile yeni şifre verip kişiye kendin ilet.</div>
+  return `<div class="toolbar"><button class="btn gold sm" data-act="user-new">+ Kullanıcı ekle</button></div>
+  <div class="info"><b>Kullanıcı ekle</b> ile tamirciye veya çalışana hesap açıp giriş bilgilerini WhatsApp'tan gönderebilirsin. Tamirci sadece işleri görür ve tamirdeki işlere fiyat girer; müşteri bilgilerini göremez. Şifresini unutan olursa <b>Şifre sıfırla</b>.</div>
   <div class="users">${S.profiles.map(p => `<div class="u">
     <div>${p.username === "gurel" ? `<div class="nm">Gürel Kuyumculuk</div>`
       : `<div class="nm">${esc(p.username)}${p.id === S.me.id ? " (sen)" : ""}</div><div class="dt">${p.role ? (p.role === "kuyumcu" ? "Kuyumcu" : "Tamirci") : "Yetkisiz"} · ${fDate((p.created_at||"").slice(0,10))}</div>`}</div>
@@ -1126,6 +1142,39 @@ async function doDeliver(id, blob){
   closeSheet(); toast(`#${id} müşteriye teslim edildi · ${fTRsaat(z || new Date())}`); await loadAll();
 }
 
+/* ============ Kullanıcı ekle ============ */
+function sifreUret(){ const a = "abcdefghjkmnpqrstuvwxyz23456789"; const r = new Uint32Array(8); crypto.getRandomValues(r); return [...r].map(n => a[n % a.length]).join(""); }
+const uygulamaAdresi = () => location.origin + location.pathname;
+function openUserNewSheet(){
+  SH = { yeni:true };
+  openSheet(`<div class="sh"><h2>Kullanıcı ekle</h2><button class="x" data-act="close">✕</button></div>
+    <form id="userNewForm">
+      <div class="field"><label>Kullanıcı adı</label><input name="u" autocapitalize="none" autocomplete="off" required placeholder="Örn. usta, ahmet.usta">
+        <div class="hint">Sadece harf, rakam ve nokta. Türkçe harfler otomatik çevrilir (Şükrü → sukru).</div></div>
+      <div class="field"><label>Geçici şifre</label><input name="p" autocomplete="off" required minlength="6" value="${sifreUret()}">
+        <div class="hint">Otomatik üretildi; değiştirebilirsin. Kişi girişten sonra logoya dokunup kendi şifresini belirler.</div></div>
+      <div class="field"><label>Yetki</label><select name="role"><option value="tamirci" selected>Tamirci</option><option value="kuyumcu">Kuyumcu</option></select></div>
+      <button class="btn gold block" type="submit">Hesabı oluştur</button>
+    </form>`);
+}
+function girisMesaji(u, pw){
+  return `Gürel Kuyumculuk · Tamir Takip\nAdres: ${uygulamaAdresi()}\nKullanıcı adı: ${u}\nŞifre: ${pw}\n\nGiriş yaptıktan sonra sol üstteki logoya dokunup "Şifre değiştir" ile kendi şifreni belirleyebilirsin.`;
+}
+function openUserReadySheet(u, pw, role){
+  const msg = girisMesaji(u, pw);
+  SH = { hazir:{ msg } };
+  openSheet(`<div class="sh"><h2>Hesap hazır ✓</h2><button class="x" data-act="close">✕</button></div>
+    <div class="teslimbox">${role === "tamirci" ? "Tamirci" : "Kuyumcu"} hesabı açıldı ve yetkisi verildi.</div>
+    <div class="kv"><span class="k">Adres</span><span style="word-break:break-all">${esc(uygulamaAdresi())}</span>
+      <span class="k">Kullanıcı adı</span><span><b>${esc(u)}</b></span>
+      <span class="k">Şifre</span><span><b>${esc(pw)}</b></span></div>
+    <div class="actions">
+      <button class="btn wa" data-act="user-wa">WhatsApp'tan gönder</button>
+      <button class="btn" data-act="user-copy">Kopyala</button>
+    </div>
+    <div class="fire" style="margin-top:10px">Şifreyi bu pencereyi kapatmadan gönder; sonra tekrar gösterilmez (gerekirse Şifre sıfırla).</div>`);
+}
+
 /* ============ Şifre ============ */
 function openPwSheet(uid){
   const self = uid === S.me.id, p = S.profiles.find(x => x.id === uid) || S.me;
@@ -1203,6 +1252,12 @@ document.addEventListener("click", async e => {
       catch(err){ if(err && err.name !== "AbortError") saveBlob(f.blob, f.name); }
     }
     else if(a === "pw"){ closeMenu(); openPwSheet(el.dataset.uid); }
+    else if(a === "user-new") openUserNewSheet();
+    else if(a === "user-wa"){ window.open(`https://wa.me/?text=${encodeURIComponent(SH.hazir.msg)}`, "_blank"); }
+    else if(a === "user-copy"){
+      try { await navigator.clipboard.writeText(SH.hazir.msg); toast("Giriş bilgileri kopyalandı"); }
+      catch(_){ toast("Kopyalanamadı; bilgileri elle yaz", true); }
+    }
   }catch(err){ toast(trErr(err), true); }
 });
 $("#modal").addEventListener("click", e => { if(e.target.id === "modal") closeSheet(); });
@@ -1263,6 +1318,16 @@ document.addEventListener("submit", async e => {
       const fi = parseNum(f.elements.fiyat.value);
       if(Number.isNaN(fi) || (fi != null && fi < 0)) throw new Error("Fiyat geçersiz.");
       await api.setPrice(SH.job.id, fi); toast(fi == null ? "Fiyat silindi" : `#${SH.job.id} fiyat: ${fTL(fi)}`); closeSheet(); await loadAll();
+    }
+    else if(f.id === "userNewForm"){
+      const u = normUser(f.elements.u.value), pw = f.elements.p.value.trim(), role = f.elements.role.value;
+      if(!/^[a-z0-9._-]{3,30}$/.test(u)) throw new Error("Kullanıcı adı 3-30 karakter olmalı (harf, rakam, nokta).");
+      if(u === "gurel") throw new Error("Bu kullanıcı adı ayrılmış.");
+      if(pw.length < 6) throw new Error("Şifre en az 6 karakter olmalı.");
+      if(S.profiles.some(x => x.username === u)) throw new Error("Bu kullanıcı adı zaten var.");
+      await api.createUser(u, pw, role);
+      await loadAll(true);
+      openUserReadySheet(u, pw, role);
     }
     else if(f.id === "pwForm"){
       const uid = f.dataset.uid, yeni = f.elements.yeni.value, self = uid === S.me.id;
