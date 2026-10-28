@@ -79,6 +79,20 @@
   .job{display:flex; gap:12px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; cursor:pointer; transition:border-color .15s; align-items:flex-start;}
   .job:hover{border-color:var(--gold-dim);}
   .job.late{border-left:3px solid var(--red);}
+  .job.uzun{border-left:3px solid var(--amber);}
+  .jm.gec{color:var(--red); font-weight:600;}
+  /* Gecikme bandı */
+  .uyari{background:var(--red-bg); border:1px solid #5c2b26; border-radius:12px; padding:10px 12px 12px; margin-bottom:14px;}
+  .uyari-h{display:flex; align-items:center; gap:10px; color:var(--red); font-size:14.5px;}
+  .uyari-h .linkbtn{margin-left:auto; color:var(--muted); font-size:12px;}
+  .uyari-g{margin-top:9px;}
+  .uyari-t{font-size:12.5px; color:var(--ink); font-weight:600; margin-bottom:5px;}
+  .uyari-t .n{display:inline-block; min-width:20px; padding:0 6px; margin-left:4px; border-radius:10px; background:var(--red); color:#fff; font-size:11.5px; text-align:center;}
+  .uyari-l{display:flex; flex-wrap:wrap; gap:6px;}
+  .uyari-i{background:var(--bg2); border:1px solid #5c2b26; color:var(--ink); border-radius:8px; padding:5px 9px; font-size:12.5px; cursor:pointer; text-align:left; max-width:100%;}
+  .uyari-i:hover{border-color:var(--red);}
+  .uyari-d{font-size:12px; color:var(--muted); align-self:center;}
+  .uyari-kisa{display:block; width:100%; text-align:left; background:var(--red-bg); border:1px solid #5c2b26; color:var(--red); border-radius:10px; padding:9px 12px; font-size:13px; font-weight:600; cursor:pointer; margin-bottom:12px;}
   .thumb{width:64px; height:64px; flex:none; border-radius:10px; background:var(--bg2); border:1px solid var(--line); overflow:hidden; display:flex; align-items:center; justify-content:center; color:var(--faint); font-size:22px;}
   .thumb img{width:100%; height:100%; object-fit:cover;}
   .jb{flex:1; min-width:0;}
@@ -236,6 +250,7 @@ const DEMO = new URLSearchParams(location.search).has("demo") || !/^https?:\/\//
 const ISLEMLER = ["Kaynak","Boy ayarı","Taş takma","Kilit / klips","Kulp takma","Zincir tamiri","Zincir kısaltma / uzatma","Şekil düzeltme",
                   "Yüzük içi yazı","İsimli kolye imalatı","Cila","Kaplama / rodaj","Diğer"];
 const USER_DOMAIN = "@gurel.local";
+const EPOSTA_UYARI = false;   // Mert: "şimdilik sadece uygulama içinde gecikme uyarısı" (e-posta kodu duruyor, menüde gizli)
 const FIRMA = { ad:"GÜREL KUYUMCULUK", adres:"Merkez Mah. 19 Mayıs Cad. Gürel Apt. No:38 B, Gölcük / Kocaeli", tel:"0532 065 41 41" };
 
 /* ============ yardımcılar ============ */
@@ -430,6 +445,27 @@ function setFormPhoto(blob){
   SH.photoBlob = blob; SH.photoRemove = false; SH.photoPreview = URL.createObjectURL(blob);
   rerenderJobForm();
 }
+
+/* ============ Gecikme bandı (ortak) ============ */
+const UYARI_GUN = 7;
+// gruplar: [{ baslik, items:[{ id, act, text }] }] · "Bugün gizle": aynı gün ve aynı sayıda kaldıkça gizli; yeni gecikme çıkarsa yine görünür
+function gecikmeBandi(app, gruplar){
+  const n = gruplar.reduce((a, g) => a + g.items.length, 0);
+  if(!n) return "";
+  const key = app + "-uyari-gizli-" + ((S.me && S.me.id) || ""), deger = todayISO() + ":" + n;
+  let gizli = false; try { gizli = localStorage.getItem(key) === deger; } catch(_){}
+  if(gizli) return `<button class="uyari-kisa" data-act="uyari-goster" data-k="${key}">⚠ ${n} gecikme var · göster</button>`;
+  return `<div class="uyari" role="alert">
+    <div class="uyari-h"><b>⚠ Gecikme uyarısı (${n})</b><button class="linkbtn" data-act="uyari-gizle" data-k="${key}" data-v="${deger}">Bugün gizle</button></div>
+    ${gruplar.filter(g => g.items.length).map(g => `<div class="uyari-g"><div class="uyari-t">${g.baslik}<span class="n">${g.items.length}</span></div>
+      <div class="uyari-l">${g.items.slice(0, 8).map(i => `<button class="uyari-i" data-act="${i.act}" data-id="${i.id}">${esc(i.text)}</button>`).join("")}${g.items.length > 8 ? `<span class="uyari-d">+${g.items.length - 8} daha</span>` : ""}</div></div>`).join("")}
+  </div>`;
+}
+function uyariIslem(el){
+  try { if(el.dataset.act === "uyari-gizle") localStorage.setItem(el.dataset.k, el.dataset.v); else localStorage.removeItem(el.dataset.k); } catch(_){}
+  render();
+}
+/* ============ /Gecikme bandı ============ */
 
 /* ============ Veri katmanı: Supabase ============ */
 function makeSupabaseApi(){
@@ -746,9 +782,11 @@ function jobCard(j, hazir){
   else if(j.fiyat != null) right.push(`<div class="price">${fTL(j.fiyat)}</div>`);
   else right.push(`<span class="badge b-wait">Fiyat yok</span>`);
   if(late) right.push(`<span class="badge b-late">Gecikti</span>`);
+  const uzun = j.durum === "tamirde" && !j.beklenen_tarih && gun >= UYARI_GUN;
+  if(uzun) right.push(`<span class="badge b-wait">Tarih yok · ${gun} gün</span>`);
   if(j.durum === "tamamlandi" && payOfJob(j)) right.push(`<span class="badge b-ok">Ödendi</span>`);
   if(j.durum === "tamamlandi" && hasMusteri(j)) right.push(j.musteri_teslim_tarihi ? `<span class="badge b-gray">Müşteriye verildi${j.musteri?.imza_path ? " ✍" : ""}</span>` : `<span class="badge b-wait">Müşteri bekliyor</span>`);
-  return `<div class="job ${late?"late":""}" data-act="open-job" data-id="${j.id}">
+  return `<div class="job ${late ? "late" : uzun ? "uzun" : ""}" data-act="open-job" data-id="${j.id}">
     ${thumb(j)}
     <div class="jb">
       <div class="jt"><span class="no">#${j.id}</span>${esc(j.urun)}</div>
@@ -760,17 +798,31 @@ function jobCard(j, hazir){
   </div>`;
 }
 
+function tamirGecikmeleri(){
+  const t = todayISO(), kisa = s => s.length > 34 ? s.slice(0, 33) + "…" : s;
+  const g1 = S.open.filter(j => j.beklenen_tarih && j.beklenen_tarih < t).sort((a, b) => a.beklenen_tarih.localeCompare(b.beklenen_tarih) || a.id - b.id)
+    .map(j => ({ id:j.id, act:"open-job", text:`#${j.id} ${kisa(j.urun)} · ${daysBetween(j.beklenen_tarih, t)} gün geçti` }));
+  const g2 = S.open.filter(j => !j.beklenen_tarih && daysBetween(j.verilis_tarihi, t) >= UYARI_GUN).sort((a, b) => a.verilis_tarihi.localeCompare(b.verilis_tarihi) || a.id - b.id)
+    .map(j => ({ id:j.id, act:"open-job", text:`#${j.id} ${kisa(j.urun)} · ${daysBetween(j.verilis_tarihi, t)} gündür` }));
+  const g3 = isK() ? hazirList().filter(j => j.donus_tarihi && daysBetween(j.donus_tarihi, t) >= UYARI_GUN)
+    .map(j => ({ id:j.id, act:"open-job", text:`#${j.id} ${kisa(j.urun)}${j.musteri?.ad ? " · " + j.musteri.ad : ""} · ${daysBetween(j.donus_tarihi, t)} gündür` })) : [];
+  return gecikmeBandi("tamir", [
+    { baslik:"🔧 Beklenen dönüşü geçen", items:g1 },
+    { baslik:`⏳ Dönüş tarihi yok, ${UYARI_GUN}+ gündür tamirde`, items:g2 },
+    { baslik:`🛍 Tamirden geldi, müşteri ${UYARI_GUN}+ gündür almadı`, items:g3 },
+  ]);
+}
 const hazirList = () => S.closed.filter(j => j.durum === "tamamlandi" && !j.musteri_teslim_tarihi && hasMusteri(j))
   .sort((a,b) => (a.donus_tarihi || "").localeCompare(b.donus_tarihi || "") || a.id - b.id);
 function hazirCard(j){
   const gun = daysBetween(j.donus_tarihi || todayISO(), todayISO());
-  const ph = waPhone(j.musteri?.telefon);
-  return `<div class="job" data-act="open-job" data-id="${j.id}">
+  const ph = waPhone(j.musteri?.telefon), gec = gun >= UYARI_GUN;
+  return `<div class="job ${gec ? "late" : ""}" data-act="open-job" data-id="${j.id}">
     ${thumb(j)}
     <div class="jb">
       <div class="jt"><span class="no">#${j.id}</span>${esc(j.urun)}</div>
       <div class="jm cust">👤 ${esc(j.musteri.ad || "—")}${j.musteri.telefon ? " · " + esc(j.musteri.telefon) : ""}</div>
-      <div class="jm">Tamirden geldi ${fDate(j.donus_tarihi)} · ${gun === 0 ? "bugün" : gun + " gündür bekliyor"}</div>
+      <div class="jm ${gec ? "gec" : ""}">Tamirden geldi ${fDate(j.donus_tarihi)} · ${gun === 0 ? "bugün" : gun + " gündür bekliyor"}</div>
       <div class="jm">${j.musteri_haber ? `📨 Haber verildi · ${fDateTime(j.musteri_haber)}` : `<span style="color:var(--amber)">Henüz haber verilmedi</span>`}</div>
       <div class="cardbtns">
         ${ph ? `<button class="btn sm wa" data-act="wa" data-id="${j.id}">WhatsApp'tan haber ver</button>` : ""}
@@ -785,8 +837,9 @@ function hazirView(){
     <span class="pill"><b>${L.length}</b> ürün dükkanda, müşteri bekleniyor</span>
     ${bekleyen ? `<span class="pill red"><b>${bekleyen}</b> müşteriye haber verilmedi</span>` : ""}
   </div>`;
-  if(!L.length) return pills + `<div class="empty">Teslim bekleyen ürün yok.<br><span style="font-size:13px">Müşteri bilgisi girilen işler, tamirden gelince buraya düşer.</span></div>`;
-  return pills + `<div class="list">${L.map(j => jobCard(j, true)).join("")}</div>`;
+  const band = tamirGecikmeleri();
+  if(!L.length) return band + pills + `<div class="empty">Teslim bekleyen ürün yok.<br><span style="font-size:13px">Müşteri bilgisi girilen işler, tamirden gelince buraya düşer.</span></div>`;
+  return band + pills + `<div class="list">${L.map(j => jobCard(j, true)).join("")}</div>`;
 }
 
 function openView(){
@@ -799,8 +852,9 @@ function openView(){
     ${late ? `<span class="pill red"><b>${late}</b> gecikmiş</span>` : ""}
     <span class="pill">Fiyatı girilen <b>${priced.length}</b>${priced.length ? ` · <b>${fTL(sum)}</b>` : ""}</span>
   </div>`;
-  if(!S.open.length) return pills + `<div class="empty">${isK() ? "Tamirde bekleyen iş yok.<br>Yeni iş eklemek için sağ alttaki <b>+ Yeni İş</b>." : "Bekleyen iş yok."}</div>`;
-  return pills + `<div class="list">${S.open.map(j => jobCard(j)).join("")}</div>`;
+  const band = tamirGecikmeleri();
+  if(!S.open.length) return band + pills + `<div class="empty">${isK() ? "Tamirde bekleyen iş yok.<br>Yeni iş eklemek için sağ alttaki <b>+ Yeni İş</b>." : "Bekleyen iş yok."}</div>`;
+  return band + pills + `<div class="list">${S.open.map(j => jobCard(j)).join("")}</div>`;
 }
 
 function weeksView(){
@@ -1438,7 +1492,7 @@ function toggleMenu(){
   const nb = bekleyenKullanici();
   d.innerHTML = `${isK() ? `<button role="menuitem" data-act="siparis-git">↗ Sipariş Takip</button>
     <button role="menuitem" data-act="users">👥 Kullanıcılar${nb ? `<span class="mn" title="Onay bekleyen">${nb}</span>` : ""}</button>` : ""}
-    ${S.me.username === "gurel" ? `<button role="menuitem" data-act="bildirim">🔔 Gecikme uyarıları</button>` : ""}
+    ${EPOSTA_UYARI && S.me.username === "gurel" ? `<button role="menuitem" data-act="bildirim">🔔 Gecikme uyarıları</button>` : ""}
     <button role="menuitem" data-act="pw" data-uid="${S.me.id}">🔑 Şifre değiştir</button>
     <button role="menuitem" data-act="logout">↩ Çıkış</button>`;
   w.appendChild(d);
@@ -1481,6 +1535,7 @@ document.addEventListener("click", async e => {
     else if(a === "hf"){ S.hfilter = el.dataset.v; render(); }
     else if(a === "excel") exportExcel();
     else if(a === "menu") toggleMenu();
+    else if(a === "uyari-gizle" || a === "uyari-goster") uyariIslem(el);
     else if(a === "siparis-git"){ closeMenu(); location.href = "SiparisTakip.html"; }
     else if(a === "users"){ closeMenu(); openUsersSheet(); }
     else if(a === "bildirim"){ closeMenu(); await openUyari(); }

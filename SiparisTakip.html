@@ -79,6 +79,20 @@
   .job{display:flex; gap:12px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; cursor:pointer; transition:border-color .15s; align-items:flex-start;}
   .job:hover{border-color:var(--gold-dim);}
   .job.late{border-left:3px solid var(--red);}
+  .job.uzun{border-left:3px solid var(--amber);}
+  .jm.gec{color:var(--red); font-weight:600;}
+  /* Gecikme bandı */
+  .uyari{background:var(--red-bg); border:1px solid #5c2b26; border-radius:12px; padding:10px 12px 12px; margin-bottom:14px;}
+  .uyari-h{display:flex; align-items:center; gap:10px; color:var(--red); font-size:14.5px;}
+  .uyari-h .linkbtn{margin-left:auto; color:var(--muted); font-size:12px;}
+  .uyari-g{margin-top:9px;}
+  .uyari-t{font-size:12.5px; color:var(--ink); font-weight:600; margin-bottom:5px;}
+  .uyari-t .n{display:inline-block; min-width:20px; padding:0 6px; margin-left:4px; border-radius:10px; background:var(--red); color:#fff; font-size:11.5px; text-align:center;}
+  .uyari-l{display:flex; flex-wrap:wrap; gap:6px;}
+  .uyari-i{background:var(--bg2); border:1px solid #5c2b26; color:var(--ink); border-radius:8px; padding:5px 9px; font-size:12.5px; cursor:pointer; text-align:left; max-width:100%;}
+  .uyari-i:hover{border-color:var(--red);}
+  .uyari-d{font-size:12px; color:var(--muted); align-self:center;}
+  .uyari-kisa{display:block; width:100%; text-align:left; background:var(--red-bg); border:1px solid #5c2b26; color:var(--red); border-radius:10px; padding:9px 12px; font-size:13px; font-weight:600; cursor:pointer; margin-bottom:12px;}
   .thumb{width:64px; height:64px; flex:none; border-radius:10px; background:var(--bg2); border:1px solid var(--line); overflow:hidden; display:flex; align-items:center; justify-content:center; color:var(--faint); font-size:22px;}
   .thumb img{width:100%; height:100%; object-fit:cover;}
   .jb{flex:1; min-width:0;}
@@ -334,6 +348,28 @@ function trErr(e){
 }
 const lsGet = k => { try { return localStorage.getItem(k) || ""; } catch(_) { return ""; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, String(v ?? "")); } catch(_) {} };
+
+/* ============ Gecikme bandı (ortak) ============ */
+const UYARI_GUN = 7;
+// gruplar: [{ baslik, items:[{ id, act, text }] }] · "Bugün gizle": aynı gün ve aynı sayıda kaldıkça gizli; yeni gecikme çıkarsa yine görünür
+function gecikmeBandi(app, gruplar){
+  const n = gruplar.reduce((a, g) => a + g.items.length, 0);
+  if(!n) return "";
+  const key = app + "-uyari-gizli-" + ((S.me && S.me.id) || ""), deger = todayISO() + ":" + n;
+  let gizli = false; try { gizli = localStorage.getItem(key) === deger; } catch(_){}
+  if(gizli) return `<button class="uyari-kisa" data-act="uyari-goster" data-k="${key}">⚠ ${n} gecikme var · göster</button>`;
+  return `<div class="uyari" role="alert">
+    <div class="uyari-h"><b>⚠ Gecikme uyarısı (${n})</b><button class="linkbtn" data-act="uyari-gizle" data-k="${key}" data-v="${deger}">Bugün gizle</button></div>
+    ${gruplar.filter(g => g.items.length).map(g => `<div class="uyari-g"><div class="uyari-t">${g.baslik}<span class="n">${g.items.length}</span></div>
+      <div class="uyari-l">${g.items.slice(0, 8).map(i => `<button class="uyari-i" data-act="${i.act}" data-id="${i.id}">${esc(i.text)}</button>`).join("")}${g.items.length > 8 ? `<span class="uyari-d">+${g.items.length - 8} daha</span>` : ""}</div></div>`).join("")}
+  </div>`;
+}
+function uyariIslem(el){
+  try { if(el.dataset.act === "uyari-gizle") localStorage.setItem(el.dataset.k, el.dataset.v); else localStorage.removeItem(el.dataset.k); } catch(_){}
+  render();
+}
+/* ============ /Gecikme bandı ============ */
+
 
 /* ============ Fotoğraf küçültme ============ */
 async function compressImage(file){
@@ -751,6 +787,21 @@ function searchBox(){
 function thumb(o){ if(o.foto_path) gorunenFoto.push(o.foto_path); const u = urlOf(o.foto_path);
   return `<div class="thumb">${u ? `<img src="${esc(u)}" loading="lazy" alt="">` : "◇"}</div>`; }
 
+function siparisGecikmeleri(){
+  const t = todayISO(), kisa = s => s.length > 34 ? s.slice(0, 33) + "…" : s;
+  const ver = S.orders.filter(o => o.durum === "verildi");
+  const g1 = ver.filter(o => o.beklenen_tarih && o.beklenen_tarih < t).sort((a, b) => a.beklenen_tarih.localeCompare(b.beklenen_tarih) || a.id - b.id)
+    .map(o => ({ id:o.id, act:"open", text:`#${o.id} ${kisa(o.urun)}${tedOf(o.tedarikci_id) ? " · " + tedOf(o.tedarikci_id).ad : ""} · ${daysBetween(o.beklenen_tarih, t)} gün geçti` }));
+  const g2 = ver.filter(o => !o.beklenen_tarih && daysBetween(o.siparis_tarihi, t) >= UYARI_GUN).sort((a, b) => a.siparis_tarihi.localeCompare(b.siparis_tarihi) || a.id - b.id)
+    .map(o => ({ id:o.id, act:"open", text:`#${o.id} ${kisa(o.urun)} · ${daysBetween(o.siparis_tarihi, t)} gündür` }));
+  const g3 = listGeldi().filter(o => o.gelis_tarihi && daysBetween(o.gelis_tarihi, t) >= UYARI_GUN)
+    .map(o => ({ id:o.id, act:"open", text:`#${o.id} ${kisa(o.urun)}${o.musteri_ad ? " · " + o.musteri_ad : ""} · ${daysBetween(o.gelis_tarihi, t)} gündür` }));
+  return gecikmeBandi("siparis", [
+    { baslik:"📦 Toptancıda, beklenen tarihi geçen", items:g1 },
+    { baslik:`⏳ Beklenen tarih yok, ${UYARI_GUN}+ gündür toptancıda`, items:g2 },
+    { baslik:`🛍 Geldi, müşteri ${UYARI_GUN}+ gündür almadı`, items:g3 },
+  ]);
+}
 function card(o, opts = {}){
   const t = todayISO(), od = odemeTop(o.id), ted = tedOf(o.tedarikci_id), cal = calOf(o.calisan_id);
   const late = o.durum === "verildi" && o.beklenen_tarih && o.beklenen_tarih < t;
@@ -760,6 +811,9 @@ function card(o, opts = {}){
   else if(o.durum === "geldi"){ const g = daysBetween(o.gelis_tarihi || t, t); meta = `Geldi ${fDate(o.gelis_tarihi)} · ${g === 0 ? "bugün" : g + " gündür bekliyor"}`; }
   else if(o.durum === "teslim") meta = `Teslim ${o.teslim_zamani ? fDateTime(o.teslim_zamani) : fDate(o.teslim_tarihi)}`;
   else meta = `${fDate(o.siparis_tarihi)} sipariş · iptal`;
+  const sGun = o.durum === "verildi" ? daysBetween(o.siparis_tarihi, t) : 0;
+  const uzun = o.durum === "verildi" && !o.beklenen_tarih && sGun >= UYARI_GUN;
+  const bekl = o.durum === "geldi" && o.gelis_tarihi && daysBetween(o.gelis_tarihi, t) >= UYARI_GUN;
   const chips = [o.ayar ? `<span class="chip">${o.ayar} ayar</span>` : "", gramText(o) ? `<span class="chip">${esc(gramText(o))}</span>` : "",
     ted ? `<span class="chip">${esc(ted.ad)}</span>` : (o.durum === "verildi" ? `<span class="chip warn">Toptancı seçilmedi</span>` : "")].join("");
   const right = [];
@@ -767,13 +821,14 @@ function card(o, opts = {}){
   else if(o.durum === "verildi" || o.durum === "geldi") right.push(`<span class="badge b-wait">Ödeme yok</span>`);
   if(opts.durum || o.durum === "iptal" || o.durum === "teslim") right.push(`<span class="badge ${DURUM[o.durum][1]}">${DURUM[o.durum][0]}${o.durum === "teslim" && o.imza_path ? " ✍" : ""}</span>`);
   if(late) right.push(`<span class="badge b-late">Gecikti</span>`);
+  if(uzun) right.push(`<span class="badge b-wait">Tarih yok · ${sGun} gün</span>`);
   const ph = waPhone(o.musteri_tel);
-  return `<div class="job ${late ? "late" : ""}" data-act="open" data-id="${o.id}">
+  return `<div class="job ${late || bekl ? "late" : uzun ? "uzun" : ""}" data-act="open" data-id="${o.id}">
     ${thumb(o)}
     <div class="jb">
       <div class="jt"><span class="no">#${o.id}</span>${esc(o.urun)}</div>
       ${chips ? `<div class="chips">${chips}</div>` : ""}
-      <div class="jm">${meta}</div>
+      <div class="jm ${bekl ? "gec" : ""}">${meta}</div>
       ${o.musteri_ad || o.musteri_tel ? `<div class="jm cust">👤 ${esc(o.musteri_ad || "—")}${o.musteri_tel ? " · " + esc(o.musteri_tel) : ""}</div>` : ""}
       ${cal ? `<div class="jm">Siparişi alan: ${esc(cal.ad)}</div>` : ""}
       ${opts.geldi ? `<div class="jm">${o.musteri_haber ? `📨 Haber verildi · ${fDateTime(o.musteri_haber)}` : `<span style="color:var(--amber)">Müşteriye henüz haber verilmedi</span>`}</div>
@@ -803,8 +858,9 @@ function toptanciView(){
     ${late ? `<span class="pill red"><b>${late}</b> gecikmiş</span>` : ""}
     ${od.tl ? `<span class="pill">Alınan <b>${fTL(od.tl)}</b> · <b>${fHas(r3(od.has))}</b></span>` : ""}
   </div>`;
-  if(!all.length) return pills + `<div class="empty">Toptancıda bekleyen sipariş yok.<br>Yeni sipariş için sağ alttaki <b>+ Yeni Sipariş</b>.</div>`;
-  return segs + pills + `<div class="list">${L.map(o => card(o)).join("")}</div>`;
+  const band = siparisGecikmeleri();
+  if(!all.length) return band + pills + `<div class="empty">Toptancıda bekleyen sipariş yok.<br>Yeni sipariş için sağ alttaki <b>+ Yeni Sipariş</b>.</div>`;
+  return band + segs + pills + `<div class="list">${L.map(o => card(o)).join("")}</div>`;
 }
 function geldiView(){
   const L = listGeldi(), bekleyen = L.filter(o => !o.musteri_haber && (o.musteri_ad || o.musteri_tel)).length;
@@ -812,8 +868,9 @@ function geldiView(){
     <span class="pill"><b>${L.length}</b> ürün dükkanda, müşteri bekleniyor</span>
     ${bekleyen ? `<span class="pill red"><b>${bekleyen}</b> müşteriye haber verilmedi</span>` : ""}
   </div>`;
-  if(!L.length) return pills + `<div class="empty">Teslim bekleyen ürün yok.<br><span style="font-size:13px">Toptancıdan gelen siparişler buraya düşer.</span></div>`;
-  return pills + `<div class="list">${L.map(o => card(o, { geldi:true })).join("")}</div>`;
+  const band = siparisGecikmeleri();
+  if(!L.length) return band + pills + `<div class="empty">Teslim bekleyen ürün yok.<br><span style="font-size:13px">Toptancıdan gelen siparişler buraya düşer.</span></div>`;
+  return band + pills + `<div class="list">${L.map(o => card(o, { geldi:true })).join("")}</div>`;
 }
 function gecmisView(){
   let L = listGecmis();
@@ -1471,6 +1528,7 @@ document.addEventListener("click", async e => {
     else if(a === "q-clear"){ S.q = ""; render(); }
     else if(a === "excel") exportExcel();
     else if(a === "menu") toggleMenu();
+    else if(a === "uyari-gizle" || a === "uyari-goster") uyariIslem(el);
     else if(a === "listeler"){ closeMenu(); openListeler(); }
     else if(a === "ted-edit") openTedEdit(Number(el.dataset.id));
     else if(a === "cal-edit") openCalEdit(Number(el.dataset.id));
