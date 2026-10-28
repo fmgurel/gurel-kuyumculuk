@@ -490,7 +490,7 @@ function jobCard(j){
   if(j.durum === "tamirde") meta = `${fDate(j.verilis_tarihi)}'de verildi · ${gun === 0 ? "bugün" : gun + " gün"}${j.beklenen_tarih ? ` · beklenen ${fDate(j.beklenen_tarih)}` : ""}`;
   else if(j.durum === "tamamlandi") meta = `${fDate(j.verilis_tarihi)} → ${fDate(j.donus_tarihi)} · ${gun} gün`;
   else meta = `${fDate(j.verilis_tarihi)}'de verildi · iptal`;
-  const fr = j.durum === "tamamlandi" ? fireOf(j) : null;
+  const fr = fireOf(j);
   const gram = j.gonderilen_gram != null ? (fr != null
       ? `${fGr(j.gonderilen_gram)} → ${fGr(j.donen_gram)} (${fireText(fr).toLowerCase()})` : fGr(j.gonderilen_gram)) : "";
   const right = [];
@@ -632,17 +632,18 @@ function jobForm(j){
     <div class="field"><label>Açıklama / not</label><textarea name="aciklama" placeholder="Tamirciye not">${esc(j.aciklama || "")}</textarea></div>
     <div class="row2">
       <div class="field"><label>Gönderilen gram</label><input name="gonderilen_gram" inputmode="decimal" value="${esc(numIn(j.gonderilen_gram))}" placeholder="0,00"></div>
+      <div class="field"><label>Dönen gram (isteğe bağlı)</label><input name="donen_gram" inputmode="decimal" value="${esc(numIn(j.donen_gram))}" placeholder="Tartıp yaz"></div>
+    </div>
+    <div class="fire" id="formFire" style="margin-top:-6px"></div>
+    <div class="row2">
       <div class="field"><label>Fiyat (₺)</label><input name="fiyat" inputmode="decimal" value="${esc(numIn(j.fiyat))}" placeholder="Tamirci girecek"></div>
+      ${j.durum === "tamamlandi" ? `<div class="field"><label>Dönüş tarihi</label><input name="donus_tarihi" type="date" required value="${esc(j.donus_tarihi || "")}"></div>` : "<div></div>"}
     </div>
     ${!isNew && j.fiyat != null && j.fiyat_giren ? `<div class="fire" style="margin-top:-8px">Fiyatı giren: <b>${esc(nameOf(j.fiyat_giren))}</b>${j.fiyat_zamani ? " · " + fDateTime(j.fiyat_zamani) : ""}</div>` : ""}
     <div class="row2">
       <div class="field"><label>Veriliş tarihi</label><input name="verilis_tarihi" type="date" required value="${esc(j.verilis_tarihi)}"></div>
       <div class="field"><label>Beklenen dönüş</label><input name="beklenen_tarih" type="date" value="${esc(j.beklenen_tarih || "")}"></div>
     </div>
-    ${j.durum === "tamamlandi" ? `<div class="row2">
-      <div class="field"><label>Dönüş tarihi</label><input name="donus_tarihi" type="date" required value="${esc(j.donus_tarihi || "")}"></div>
-      <div class="field"><label>Dönen gram (isteğe bağlı)</label><input name="donen_gram" inputmode="decimal" value="${esc(numIn(j.donen_gram))}" placeholder="Girilmedi"></div>
-    </div>` : ""}
     <div class="section">Müşteri (tamirci görmez)</div>
     <div class="row2">
       <div class="field"><label>Ad soyad</label><input name="m_ad" value="${esc(j.musteri?.ad || "")}"></div>
@@ -666,6 +667,7 @@ function openJobSheet(id){
   if(!isK()) return openTamirciSheet(j);
   const title = j ? `<span class="no">#${j.id}</span> ${esc(j.urun)}` : "Yeni tamir işi";
   openSheet(`<div class="sh"><h2>${title}</h2><button class="x" data-act="close">✕</button></div>${jobForm(j)}`);
+  updFormFire();
 }
 
 function openTamirciSheet(j){
@@ -692,15 +694,16 @@ function openTamirciSheet(j){
 
 function readJobForm(){
   const f = $("#jobForm"), v = n => (f.elements[n] ? f.elements[n].value.trim() : undefined);
-  const g = parseNum(v("gonderilen_gram")), fi = parseNum(v("fiyat")), dg = v("donen_gram") !== undefined ? parseNum(v("donen_gram")) : undefined;
+  const g = parseNum(v("gonderilen_gram")), fi = parseNum(v("fiyat")), dg = parseNum(v("donen_gram"));
   if(!v("urun")) throw new Error("Ürün adı gerekli.");
   if(Number.isNaN(g) || (g != null && g < 0)) throw new Error("Gönderilen gram geçersiz.");
   if(Number.isNaN(fi) || (fi != null && fi < 0)) throw new Error("Fiyat geçersiz.");
-  if(dg !== undefined && (Number.isNaN(dg) || (dg != null && dg < 0))) throw new Error("Dönen gram geçersiz.");
+  if(Number.isNaN(dg) || (dg != null && dg < 0)) throw new Error("Dönen gram geçersiz.");
   if(v("beklenen_tarih") && v("beklenen_tarih") < v("verilis_tarihi")) throw new Error("Beklenen dönüş, veriliş tarihinden önce olamaz.");
   const fields = { urun:v("urun"), islem:[...SH.islem].join(", ") || null, aciklama:v("aciklama") || null, gonderilen_gram:g,
                    verilis_tarihi:v("verilis_tarihi"), beklenen_tarih:v("beklenen_tarih") || null };
-  if(dg !== undefined){ fields.donen_gram = dg; fields.donus_tarihi = v("donus_tarihi"); if(!fields.donus_tarihi) throw new Error("Dönüş tarihi gerekli."); }
+  fields.donen_gram = dg;
+  if(v("donus_tarihi") !== undefined){ fields.donus_tarihi = v("donus_tarihi"); if(!fields.donus_tarihi) throw new Error("Dönüş tarihi gerekli."); }
   return { fields, fiyat:fi, musteri:{ ad:v("m_ad") || null, telefon:v("m_tel") || null } };
 }
 
@@ -723,12 +726,12 @@ async function saveJob(){
 function openCompleteSheet(){
   const j = SH.job;
   try { SH.pending = readJobForm(); } catch(e){ return toast(e.message, true); }
-  const g = SH.pending.fields.gonderilen_gram, fi = SH.pending.fiyat;
+  const g = SH.pending.fields.gonderilen_gram, fi = SH.pending.fiyat, dg0 = SH.pending.fields.donen_gram;
   openSheet(`<div class="sh"><h2>Teslim al · <span class="no">#${j.id}</span></h2><button class="x" data-act="close">✕</button></div>
     <form id="completeForm">
       <div class="row2">
         <div class="field"><label>Dönüş tarihi</label><input name="donus_tarihi" type="date" required value="${todayISO()}"></div>
-        <div class="field"><label>Dönen gram (isteğe bağlı)</label><input name="donen_gram" inputmode="decimal" value="" placeholder="Tartıp yaz"></div>
+        <div class="field"><label>Dönen gram (isteğe bağlı)</label><input name="donen_gram" inputmode="decimal" value="${esc(numIn(dg0))}" placeholder="Tartıp yaz"></div>
       </div>
       <div class="fire" id="fireOut"></div>
       <div class="field bigprice"><label>Tamir bedeli (₺)</label><input name="fiyat" inputmode="decimal" value="${esc(numIn(fi))}" placeholder="Henüz yok"></div>
@@ -794,7 +797,7 @@ document.addEventListener("keydown", e => { if(e.key === "Escape" && !$("#modal"
 
 function snapshotInputs(){ if(!SH) return; SH.values = {}; $("#sheet").querySelectorAll("input[name],textarea[name],select[name]").forEach(el => { if(el.type !== "file") SH.values[el.name] = el.value; }); }
 function rerenderJobForm(){ const f = $("#jobForm"); if(!f) return; const sel = SH.islem; const wrap = document.createElement("div"); wrap.innerHTML = jobForm(SH.job); f.replaceWith(wrap.firstElementChild);
-  SH.islem = sel; $("#islemOpts").querySelectorAll(".opt").forEach(b => b.classList.toggle("on", sel.has(b.dataset.v))); restoreSheetInputs(); }
+  SH.islem = sel; $("#islemOpts").querySelectorAll(".opt").forEach(b => b.classList.toggle("on", sel.has(b.dataset.v))); restoreSheetInputs(); updFormFire(); }
 
 document.addEventListener("change", async e => {
   const el = e.target;
@@ -812,6 +815,10 @@ document.addEventListener("change", async e => {
     }
   }catch(err){ toast(trErr(err), true); }
 });
+function updFormFire(){ const f = $("#jobForm"), o = $("#formFire"); if(!f || !o) return;
+  const g = parseNum(f.elements.gonderilen_gram.value), d = parseNum(f.elements.donen_gram.value);
+  o.textContent = (g != null && d != null && !Number.isNaN(g) && !Number.isNaN(d)) ? fireText(fireOf({ gonderilen_gram:g, donen_gram:d })) : ""; }
+document.addEventListener("input", e => { if(e.target.name === "gonderilen_gram" || e.target.name === "donen_gram") updFormFire(); });
 document.addEventListener("input", e => { if(e.target.id === "q"){ S.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $("#q"); q.focus(); q.setSelectionRange(pos, pos); } });
 
 document.addEventListener("submit", async e => {
