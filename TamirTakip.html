@@ -457,7 +457,9 @@ const api = DEMO ? makeDemoApi() : makeSupabaseApi();
 /* ============ Durum ============ */
 const S = { me:null, tab:"tamirde", open:[], closed:[], pays:[], profiles:[], urls:{}, q:"", hfilter:"tum", expanded:{}, loading:false, authMode:"giris", authErr:"" };
 const isK = () => S.me && S.me.role === "kuyumcu";
-const nameOf = id => (S.profiles.find(p => p.id === id) || {}).username || "";
+// Yönetici hesabı her yerde firma adıyla görünür
+const gorunenAd = u => u === "gurel" ? "Gürel Kuyumculuk" : (u || "");
+const nameOf = id => gorunenAd((S.profiles.find(p => p.id === id) || {}).username);
 const allJobs = () => [...S.open, ...S.closed];
 const findJob = id => allJobs().find(j => j.id === id);
 
@@ -694,8 +696,9 @@ function usersView(){
   const benGurel = S.me.username === "gurel";
   return `<div class="info">Yeni kişi uygulamada <b>Hesap oluştur</b> der; burada ona yetki verirsin. Tamirci sadece işleri görür ve teslim alınmamış işlere fiyat girer; müşteri bilgilerini göremez. Şifresini unutan olursa <b>Şifre sıfırla</b> ile yeni şifre verip kişiye kendin ilet.</div>
   <div class="users">${S.profiles.map(p => `<div class="u">
-    <div><div class="nm">${esc(p.username)}${p.id === S.me.id ? " (sen)" : ""}</div><div class="dt">${p.role ? (p.role === "kuyumcu" ? "Kuyumcu" : "Tamirci") : "Yetkisiz"} · ${fDate((p.created_at||"").slice(0,10))}</div></div>
-    ${p.id === S.me.id ? "" : `<div style="margin-left:auto;display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+    <div>${p.username === "gurel" ? `<div class="nm">Gürel Kuyumculuk</div>`
+      : `<div class="nm">${esc(p.username)}${p.id === S.me.id ? " (sen)" : ""}</div><div class="dt">${p.role ? (p.role === "kuyumcu" ? "Kuyumcu" : "Tamirci") : "Yetkisiz"} · ${fDate((p.created_at||"").slice(0,10))}</div>`}</div>
+    ${p.id === S.me.id || p.username === "gurel" ? "" : `<div style="margin-left:auto;display:flex;flex-direction:column;gap:6px;align-items:flex-end">
       <select data-act="role" data-id="${p.id}" style="margin-left:0">${opts.map(([v,l]) => `<option value="${v}" ${(p.role||"")===v?"selected":""}>${l}</option>`).join("")}</select>
       ${p.username === "gurel" && !benGurel ? "" : `<button class="btn sm ghost" data-act="pw" data-uid="${p.id}">Şifre sıfırla</button>`}
     </div>`}
