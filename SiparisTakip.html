@@ -39,6 +39,13 @@
   .umenu .uinfo b{color:var(--ink); font-size:14px;}
   .umenu button{display:block; width:100%; text-align:left; background:none; border:none; padding:11px 10px; border-radius:8px; cursor:pointer; font-size:14px; color:var(--ink);}
   .umenu button:hover{background:var(--card);}
+  .listrow{display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:6px; flex-wrap:wrap;}
+  .listrow.off{opacity:.55;}
+  .listrow .nm{font-weight:600;} .listrow .dt{font-size:12px; color:var(--muted); margin-top:2px;}
+  .listrow .btns{margin-left:auto; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;}
+  .umenu .mn{display:inline-block; min-width:18px; padding:0 6px; margin-left:6px; border-radius:9px; background:var(--red); color:#fff; font-size:11.5px; font-weight:700; text-align:center;}
+  .ldot{position:absolute; top:-4px; right:-6px; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:var(--red); color:#fff; font-size:12px; font-weight:700;
+        display:flex; align-items:center; justify-content:center; border:2px solid var(--bg); pointer-events:none;}
   .brand{font-weight:700; letter-spacing:2.5px; color:var(--gold); font-size:22px; text-align:center; white-space:nowrap;}
   .who{justify-self:end; text-align:right; font-size:12px; color:var(--muted); line-height:1.35;}
   @media (min-width:700px){ .topin img{max-height:84px;} .brand{font-size:28px; letter-spacing:3px;} .who{font-size:13px;} }
@@ -121,6 +128,7 @@
   .btn.danger{color:var(--red); border-color:#5c2b26; background:transparent;}
   .btn.ghost{background:transparent;}
   .btn.block{width:100%;}
+  a.btn{color:var(--ink); display:inline-block;}
   .btn:disabled{opacity:.5; cursor:default;}
   .field{margin-bottom:12px;}
   .field label{display:block; font-size:12px; color:var(--muted); margin-bottom:5px; letter-spacing:.3px;}
@@ -222,10 +230,6 @@
   .kurbtn{background:none; border:none; color:var(--gold); text-decoration:underline; cursor:pointer; font-size:12px; padding:0;}
   .iconbtn{background:none; border:1px solid transparent; color:var(--muted); cursor:pointer; padding:5px 8px; font-size:14px; border-radius:8px;}
   .iconbtn:hover{color:var(--red); border-color:#5c2b26;}
-  .listrow{display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:6px;}
-  .listrow.off{opacity:.55;}
-  .listrow .nm{font-weight:600;} .listrow .dt{font-size:12px; color:var(--muted);}
-  .listrow .btns{margin-left:auto; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;}
   .addrow{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:8px; align-items:end; margin:8px 0 4px;}
   .addrow .field{margin-bottom:0;}
   @media (max-width:520px){ .addrow{grid-template-columns:1fr 1fr;} .addrow .btn{grid-column:1 / -1;} }
@@ -728,7 +732,7 @@ function loginView(){
       <div class="field"><label>Şifre</label><input name="p" type="password" autocomplete="current-password" ${api.demo?"":"required"}></div>
       <button class="btn gold block" type="submit">Giriş Yap</button>
     </form>
-    <div class="alt">Hesabı olmayan çalışan için: Tamir Takip → Kullanıcılar → <b>Kullanıcı ekle</b> (yetki: Kuyumcu).</div>
+    <div class="alt">Hesabı olmayan çalışan için: Tamir Takip → logo → Kullanıcılar → <b>Kullanıcı ekle</b> (yetki: Kuyumcu).</div>
   </div>`;
 }
 function noAccessView(){
