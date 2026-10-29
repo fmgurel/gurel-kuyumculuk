@@ -1461,8 +1461,8 @@ function toggleMenu(){
   if(document.querySelector(".umenu")) return closeMenu();
   const w = document.querySelector(".logowrap"); if(!w || !S.me) return;
   const d = document.createElement("div"); d.className = "umenu"; d.setAttribute("role", "menu");
-  d.innerHTML = `<button role="menuitem" data-act="listeler">⚙ Toptancılar ve çalışanlar</button>
-    <button role="menuitem" data-act="tamir-git">↗ Tamir Takip</button>
+  d.innerHTML = `<button role="menuitem" data-act="tamir-git">↗ Tamir Takip</button>
+    <button role="menuitem" data-act="listeler">⚙ Toptancılar ve çalışanlar</button>
     <button role="menuitem" data-act="pw" data-uid="${S.me.id}">🔑 Şifre değiştir</button>
     <button role="menuitem" data-act="logout">↩ Çıkış</button>`;
   w.appendChild(d);
