@@ -421,6 +421,11 @@ function telInput(el, tip){
   try { el.setSelectionRange(p, p); } catch(_){}
 }
 document.addEventListener("input", e => { const el = e.target; if(el && el.matches && el.matches("input[data-tel]")) telInput(el, e.inputType); });
+// Sade kartlarda geliş satırı (Teslime Hazır + Geldi): veriliş → geliş · N gündür bekliyor (7+ gün kırmızı)
+function sadeGeldi(verildi, geldi, t, etiket = "Verildi"){
+  const gun = daysBetween(geldi || t, t), gec = gun >= UYARI_GUN;
+  return { gec, html:`<div class="jm sadet">${etiket} ${fDate(verildi)} → <span class="${gec ? "tgec" : ""}">Geldi ${fDate(geldi)} · ${gun === 0 ? "bugün" : gun + " gündür bekliyor"}</span></div>` };
+}
 /* ============ /Gecikme bandı ============ */
 
 
@@ -951,12 +956,28 @@ function sadeCard(o){
       <div class="jt">${esc(o.urun)}</div>
       ${d.html}
       ${o.musteri_ad ? `<div class="jm cust">👤 ${esc(o.musteri_ad)}</div>` : ""}
-      <div class="cardbtns"><button class="btn sm" data-act="geldi-hizli" data-id="${o.id}">✓ Toptancıdan geldi</button></div>
+      <div class="cardbtns"><button class="btn sm" data-act="geldi-hizli" data-id="${o.id}">✓ Toptancıdan geldi</button><button class="btn sm ghost" data-act="fis" data-id="${o.id}">🧾 Sipariş fişi</button></div>
+    </div>
+  </div>`;
+}
+// Sade kart (Geldi sekmesi): ürün, sipariş → geliş + bekleme, müşteri adı, WhatsApp / teslim düğmeleri
+function sadeGeldiCard(o){
+  const d = sadeGeldi(o.siparis_tarihi, o.gelis_tarihi, todayISO(), "Sipariş"), ph = waPhone(o.musteri_tel);
+  return `<div class="job sade ${d.gec ? "late" : ""}" data-act="open" data-id="${o.id}">
+    <div class="jb">
+      <div class="jt">${esc(o.urun)}</div>
+      ${d.html}
+      ${o.musteri_ad || o.musteri_tel ? `<div class="jm cust">👤 ${esc(o.musteri_ad || telGoster(o.musteri_tel))}</div>` : ""}
+      <div class="cardbtns">
+        ${ph ? `<button class="btn sm wa" data-act="wa" data-id="${o.id}"${o.musteri_haber ? ` title="Haber verildi: ${esc(fDateTime(o.musteri_haber))} · tekrar göndermek için dokun"` : ""}>${o.musteri_haber ? "✓ Haber verildi" : "WhatsApp'tan haber ver"}</button>` : ""}
+        <button class="btn sm" data-act="teslim" data-id="${o.id}">✓ Müşteriye teslim et</button>
+      </div>
     </div>
   </div>`;
 }
 function card(o, opts = {}){
   if(opts.toptanci && o.durum === "verildi") return sadeCard(o);
+  if(opts.geldi && o.durum === "geldi") return sadeGeldiCard(o);
   const t = todayISO(), od = odemeTop(o.id), ted = tedOf(o.tedarikci_id), cal = calOf(o.calisan_id);
   const late = o.durum === "verildi" && o.beklenen_tarih && o.beklenen_tarih < t;
   let meta;
@@ -1025,9 +1046,9 @@ function geldiView(){
     <span class="pill"><b>${L.length}</b> ürün dükkanda, müşteri bekleniyor</span>
     ${bekleyen ? `<span class="pill red"><b>${bekleyen}</b> müşteriye haber verilmedi</span>` : ""}
   </div>`;
-  const band = siparisGecikmeleri();
-  if(!L.length) return band + pills + `<div class="empty">Teslim bekleyen ürün yok.<br><span style="font-size:13px">Toptancıdan gelen siparişler buraya düşer.</span></div>`;
-  return band + pills + `<div class="list">${L.map(o => card(o, { geldi:true })).join("")}</div>`;
+  const band = siparisGecikmeleri(); // sade görünüm: özet satırı yok
+  if(!L.length) return band + `<div class="empty">Teslim bekleyen ürün yok.<br><span style="font-size:13px">Toptancıdan gelen siparişler buraya düşer.</span></div>`;
+  return band + `<div class="list">${L.map(o => card(o, { geldi:true })).join("")}</div>`;
 }
 function gecmisView(){
   let L = listGecmis();
