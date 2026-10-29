@@ -991,18 +991,18 @@ function sadeGeldiCard(o){
 // Hesap sayfası (Mert): tek liste — Maliyet (net), Satış (net), Kapora satırları (gün/saat, kur, ödeme, has), Kâr. Gelen gram yoksa tahmini.
 function hesapListe(o){
   const h = hesap(o), R = (k, v, cls) => `<div class="hr ${cls || ""}"><span>${k}</span><span>${v}</span></div>`;
-  const net = o.gelen_gram != null, g = net ? Number(o.gelen_gram) : (o.gram != null ? Number(o.gram) : null), ad = net ? "net" : "tahmini";
+  const net = o.gelen_gram != null, g = net ? Number(o.gelen_gram) : (o.gram != null ? Number(o.gram) : null), ad = net ? "" : " (tahmini)"; // gelen gramla hesapta etiket yok
   const mal = net ? h.nMal : h.tMal, sat = net ? h.nSat : h.tSat;
   const sat_ = (lbl, m, v) => m == null ? R(lbl, `<span class="fire" style="margin:0">milyem girilmedi</span>`)
     : g == null ? R(lbl, "gram yok") : R(`${lbl} <b class="hx">${fGr(g)} × ${fMil(m)}</b>`, fHas(v));
   const L = paysOf(o.id);
   return `<div class="hesap"><div class="hb">
-    ${sat_(`Maliyet (${ad})`, h.m, mal)}
-    ${sat_(`Satış (${ad})`, h.sm, sat)}
+    ${sat_(`Maliyet${ad}`, h.m, mal)}
+    ${sat_(`Satış${ad}`, h.sm, sat)}
     ${L.length ? L.map(p => R(`Kapora <b class="hx">${esc(fDateTime(p.zaman))}</b><span class="kd">${fTL(p.tutar)} · kur ${fTL(p.has_kuru)}</span>`, fHas(p.has_gram), "kap")).join("") : R("Kapora", "yok")}
     ${sat != null ? (() => { const k = r3(sat - h.musOd); // kapora satıştan düşükse müşteri öder, yüksekse iade
-      return k > 0.0005 ? R("Müşteri ödemesi", fHas(k), "hk al") : k < -0.0005 ? R("Müşteriye iade", fHas(-k), "hk ve") : R("Müşteri hesabı kapandı", "✓", "hk ok"); })() : ""}
-    ${mal != null && sat != null ? R(`Kâr (${ad})`, fHas(r3(sat - mal)), "hk") : ""}
+      return k > 0.0005 ? R("Müşterinin kalan borcu", fHas(k), "hk al") : k < -0.0005 ? R("Müşteriye iade", fHas(-k), "hk ve") : R("Müşteri hesabı kapandı", "✓", "hk ok"); })() : ""}
+    ${mal != null && sat != null ? R(`Kâr${ad}`, fHas(r3(sat - mal)), "hk") : ""}
   </div></div>`;
 }
 function openHesapSheet(id){
