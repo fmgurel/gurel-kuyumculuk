@@ -760,7 +760,9 @@ const canDelPay = (p, o) => isY() || (p.alan === S.me.id && Date.now() - new Dat
 const canDelOrder = o => isY() || (o.durum !== "teslim" && odemeTop(o.id).n === 0 && topTop(o.id).n === 0);
 /* ---- Milyem ve hesap (has gram). Maliyet = gram × toptancı milyemi; satış = gram × satış milyemi ---- */
 function milyemOku(s){ const n = parseNum(s); if(n == null || Number.isNaN(n)) return n; const m = n >= 2 ? n / 1000 : n; return Math.round(m * 10000) / 10000; }
-const fMil = m => m == null ? "—" : Number(m).toLocaleString("tr-TR", { minimumFractionDigits:3, maximumFractionDigits:4 });
+// Milyem ekranda binde olarak yazılır/gösterilir (850); veritabanında ve hesapta 1000'e bölünmüş hâli (0,850) kullanılır
+const milBinde = m => m == null ? null : Math.round(Number(m) * 10000) / 10;
+const fMil = m => m == null ? "—" : milBinde(m).toLocaleString("tr-TR", { maximumFractionDigits:1, useGrouping:false });
 const tpaysOf = id => (S.tpays || []).filter(p => p.siparis_id === id).sort((a, b) => String(a.zaman).localeCompare(String(b.zaman)) || a.id - b.id);
 function topTop(id){ const L = tpaysOf(id); return { n:L.length, has:r3(L.reduce((a, p) => a + Number(p.has_gram), 0)), tl:Math.round(L.reduce((a, p) => a + Number(p.tutar || 0), 0) * 100) / 100 }; }
 const canDelTopPay = p => isY() || (p.alan === S.me.id && Date.now() - new Date(p.zaman).getTime() < 86400000);
@@ -810,7 +812,7 @@ function milOnizle(){
   const p = [];
   if(gr > 0 && ok(m)) p.push(`${ad} maliyet ${fHas(r3(gr * m))}`);
   if(gr > 0 && ok(sm)) p.push(`${ad} satış ${fHas(r3(gr * sm))}`);
-  out.textContent = p.length ? "= " + p.join(" · ") : (m != null && !ok(m) ? "Milyem 0,300–1,500 arası olmalı (örn. 0,935 ya da 935)" : "");
+  out.textContent = p.length ? "= " + p.join(" · ") : (m != null && !ok(m) ? "Milyem 300–1500 arası olmalı (örn. 935)" : "");
 }
 const DURUM = { verildi:["Toptancıda","b-info"], geldi:["Geldi","b-wait"], teslim:["Teslim edildi","b-ok"], iptal:["İptal","b-gray"] };
 const gramText = o => o.gelen_gram != null ? fGr(o.gelen_gram) : (o.gram != null ? "≈ " + fGr(o.gram) : "");
@@ -1200,8 +1202,8 @@ function orderForm(o){
       ${gelenAlan || geldi ? `<div class="field"><label>Gelen gram (tartılan)${o.durum === "geldi" ? " *" : ""}</label><input name="gelen_gram" inputmode="decimal" value="${esc(numIn(o.gelen_gram))}" placeholder="${o.durum === "verildi" ? "İstenirse şimdi yaz" : "Tartıp yaz"}"${o.durum === "geldi" ? " required" : ""}></div>` : "<div></div>"}
     </div>
     <div class="row2">
-      <div class="field"><label>Toptancı milyemi${milZorunlu ? " *" : ""}</label><input name="milyem" inputmode="decimal" value="${esc(o.milyem != null ? fMil(o.milyem) : "")}" placeholder="Örn. 0,935"${milZorunlu ? " required" : ""} autocomplete="off"></div>
-      <div class="field"><label>Satış milyemi (müşteri)</label><input name="satis_milyem" inputmode="decimal" value="${esc(o.satis_milyem != null ? fMil(o.satis_milyem) : "")}" placeholder="Örn. 0,960" autocomplete="off"></div>
+      <div class="field"><label>Toptancı milyemi${milZorunlu ? " *" : ""}</label><input name="milyem" inputmode="decimal" value="${esc(o.milyem != null ? fMil(o.milyem) : "")}" placeholder="Örn. 935"${milZorunlu ? " required" : ""} autocomplete="off"></div>
+      <div class="field"><label>Satış milyemi (müşteri)</label><input name="satis_milyem" inputmode="decimal" value="${esc(o.satis_milyem != null ? fMil(o.satis_milyem) : "")}" placeholder="Örn. 960" autocomplete="off"></div>
     </div>
     <div class="milout" data-milout></div>
     <div class="row2">
@@ -1300,9 +1302,9 @@ function readOrderForm(){
   if(f.elements.milyem){
     const mil = milyemOku(v("milyem")), smil = milyemOku(v("satis_milyem"));
     const zor = !SH.job || SH.job.durum === "verildi" || SH.job.durum === "geldi"; // formdaki required ile aynı kural
-    if(mil == null && zor) throw new Error("Toptancı milyemi gerekli (örn. 0,935).");
-    if(Number.isNaN(mil) || (mil != null && (mil < 0.3 || mil > 1.5))) throw new Error("Toptancı milyemi geçersiz (örn. 0,935 ya da 935).");
-    if(Number.isNaN(smil) || (smil != null && (smil < 0.3 || smil > 1.5))) throw new Error("Satış milyemi geçersiz (örn. 0,960 ya da 960).");
+    if(mil == null && zor) throw new Error("Toptancı milyemi gerekli (örn. 935).");
+    if(Number.isNaN(mil) || (mil != null && (mil < 0.3 || mil > 1.5))) throw new Error("Toptancı milyemi geçersiz: 300–1500 arası yaz (örn. 935).");
+    if(Number.isNaN(smil) || (smil != null && (smil < 0.3 || smil > 1.5))) throw new Error("Satış milyemi geçersiz: 300–1500 arası yaz (örn. 960).");
     fields.milyem = mil; fields.satis_milyem = smil;
   }
   return { fields, pay:readPay(f), tpay:readTopPay(f), ted:{ sel:tedSel, yeni:v("ted_yeni") }, cal:{ sel:calSel, yeni:v("cal_yeni") } };
@@ -1557,7 +1559,7 @@ function exportExcel(){
   const sip = [["Sipariş No","Sipariş tarihi","Ürün","Ayar","Gram (sipariş)","Gelen gram","Toptancı milyemi","Satış milyemi","Toptancı","Siparişi alan","Müşteri","Telefon","Özel notlar","Beklenen","Toptancıdan geliş","Durum","Haber verildi","Müşteriye teslim","Teslim saati","Teslim eden","İmza",
     "Müşteriden alınan ₺","Müşteriden alınan has","Tahmini maliyet has","Net maliyet has","Toptancıya ödenen has","Toptancı kalan has (+ verecek)","Tahmini satış has","Net satış has","Müşteri kalan has (+ alacak)","Kâr has"]];
   orders.forEach(o => { const od = odemeTop(o.id), h = hesap(o);
-    sip.push([o.id, T(o.siparis_tarihi), o.urun, o.ayar || null, N(o.gram), N(o.gelen_gram), N(o.milyem), N(o.satis_milyem), tedOf(o.tedarikci_id)?.ad || "", calOf(o.calisan_id)?.ad || "",
+    sip.push([o.id, T(o.siparis_tarihi), o.urun, o.ayar || null, N(o.gram), N(o.gelen_gram), N(milBinde(o.milyem)), N(milBinde(o.satis_milyem)), tedOf(o.tedarikci_id)?.ad || "", calOf(o.calisan_id)?.ad || "",
       o.musteri_ad || "", o.musteri_tel || "", o.notlar || "", T(o.beklenen_tarih), T(o.gelis_tarihi), durumText(o),
       o.musteri_haber ? fTRsaat(o.musteri_haber) : "", T(o.teslim_tarihi), o.teslim_zamani ? fTRsaat(o.teslim_zamani).slice(11) : "",
       o.teslim_eden ? nameOf(o.teslim_eden) : "", o.durum === "teslim" ? (o.imza_path ? "Var" : "Yok") : "",
