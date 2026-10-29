@@ -1325,7 +1325,7 @@ async function renderFis(j){
     T(`Fiş No: #${j.id}`, 22, "700", INK, "left", y); T(`Tarih: ${fTR(j.verilis_tarihi)}`, 20, "400", INK, "right", y); y += 40;
     HR(y, LINE); y += 18;
     const rows = [["Müşteri", j.musteri?.ad || "—"], ["Telefon", telGoster(j.musteri?.telefon) || "—"], ["Ürün", j.urun], ["Yapılacak işlem", j.islem || "—"]];
-    if(j.aciklama) rows.push(["Açıklama", j.aciklama]);
+    // Açıklama ("Tamirciye not") fişe basılmaz — müşteri görmesin (Mert, 29 Eki)
     rows.push(["Gram", j.gonderilen_gram != null ? fGr(j.gonderilen_gram) : "—"]);
     rows.push(["Tahmini teslim", j.beklenen_tarih ? fTR(j.beklenen_tarih) : "—"]);
     const LW = 230;
@@ -1382,7 +1382,7 @@ async function openFis(id){
       <button class="btn ${canShare ? "" : "gold"}" data-act="fis-dl">İndir</button>
       <button class="btn" data-act="fis-print">Yazdır</button>
     </div>
-    <div class="fire" style="margin-top:10px">Fişte tamirci fiyatı yer almaz.</div>`);
+    <div class="fire" style="margin-top:10px">Fişte tamirci fiyatı ve tamirciye not yer almaz.</div>`);
 }
 
 /* ============ Müşteriye teslim: imza ============ */
