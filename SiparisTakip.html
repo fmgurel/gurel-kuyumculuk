@@ -158,6 +158,9 @@
   .opts{display:flex; flex-wrap:wrap; gap:6px;}
   .opt{background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:7px 11px; cursor:pointer; font-size:13px; color:var(--muted);}
   .opt.on{border-color:var(--gold); color:var(--gold); background:#1f1a0e;}
+  .opts.islemler:not(:empty){margin-top:8px;}
+  .opts.islemler .opt .x{opacity:.7; margin-left:4px; font-size:11px;}
+  #islemSec{color:var(--ink); cursor:pointer;}
   .section{font-size:11px; color:var(--gold-dim); text-transform:uppercase; letter-spacing:1.2px; margin:18px 0 10px; font-weight:600;}
   .err{background:var(--red-bg); border:1px solid #5c2b26; color:var(--red); border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:12px;}
   .info{background:var(--card); border:1px solid var(--line); color:var(--muted); border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:12px;}
@@ -276,7 +279,7 @@ const LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQ8AAADICAYAAAD2tWSG
 const DEMO = new URLSearchParams(location.search).has("demo") || !/^https?:\/\//.test(CFG.url);
 const USER_DOMAIN = "@gurel.local";
 const FIRMA = { ad:"GÜREL KUYUMCULUK", adres:"Merkez Mah. 19 Mayıs Cad. Gürel Apt. No:38 B, Gölcük / Kocaeli", tel:"0532 065 41 41" };
-const AYARLAR = [8, 14, 18, 21, 22, 24];
+const AYARLAR = [14, 18, 22, 24]; // 29 Eki: 8 ve 21 çıkarıldı (Mert). Eski kayıtta varsa formda yine görünür.
 const TAMIR_SAYFA = "TamirTakip.html";
 const CAL_KEY = "siparis-calisan";
 
@@ -998,7 +1001,7 @@ function orderForm(o){
   return `<form id="orderForm" autocomplete="off">
     ${photoBlock()}
     <div class="field"><label>Ürün *</label><input name="urun" required value="${esc(o.urun)}" placeholder="Örn. 22A Burma bilezik, 14A Kolye 45 cm"></div>
-    <div class="field"><label>Ayar</label><div class="opts" id="ayarOpts">${AYARLAR.map(a => `<button type="button" class="opt ${SH.ayar === a ? "on" : ""}" data-act="ayar" data-v="${a}">${a} ayar</button>`).join("")}</div></div>
+    <div class="field"><label>Ayar</label><div class="opts" id="ayarOpts">${[...AYARLAR, ...(o.ayar && !AYARLAR.includes(o.ayar) ? [o.ayar] : [])].map(a => `<button type="button" class="opt ${SH.ayar === a ? "on" : ""}" data-act="ayar" data-v="${a}">${a} ayar</button>`).join("")}</div></div>
     <div class="row2">
       <div class="field"><label>Gram (sipariş, yaklaşık)</label><input name="gram" inputmode="decimal" value="${esc(numIn(o.gram))}" placeholder="0,00"></div>
       ${geldi ? `<div class="field"><label>Gelen gram (tartılan)</label><input name="gelen_gram" inputmode="decimal" value="${esc(numIn(o.gelen_gram))}" placeholder="0,00"></div>` : "<div></div>"}

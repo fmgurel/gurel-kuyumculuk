@@ -158,6 +158,9 @@
   .opts{display:flex; flex-wrap:wrap; gap:6px;}
   .opt{background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:7px 11px; cursor:pointer; font-size:13px; color:var(--muted);}
   .opt.on{border-color:var(--gold); color:var(--gold); background:#1f1a0e;}
+  .opts.islemler:not(:empty){margin-top:8px;}
+  .opts.islemler .opt .x{opacity:.7; margin-left:4px; font-size:11px;}
+  #islemSec{color:var(--ink); cursor:pointer;}
   .section{font-size:11px; color:var(--gold-dim); text-transform:uppercase; letter-spacing:1.2px; margin:18px 0 10px; font-weight:600;}
   .err{background:var(--red-bg); border:1px solid #5c2b26; color:var(--red); border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:12px;}
   .info{background:var(--card); border:1px solid var(--line); color:var(--muted); border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:12px;}
@@ -251,6 +254,11 @@ const LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQ8AAADICAYAAAD2tWSG
 const DEMO = new URLSearchParams(location.search).has("demo") || !/^https?:\/\//.test(CFG.url);
 const ISLEMLER = ["Kaynak","Boy ayarı","Taş takma","Kilit / klips","Kulp takma","Zincir tamiri","Zincir kısaltma / uzatma","Şekil düzeltme",
                   "Yüzük içi yazı","İsimli kolye imalatı","Cila","Kaplama / rodaj","Diğer"];
+// İşlem seçimi: açılır listeden seçilir, seçilenler altta etiket olarak durur (✕ ile kaldırılır; birden çok olabilir)
+const islemSecenek = sel => `<option value="">${sel.size ? "＋ Başka işlem ekle…" : "İşlem seç…"}</option>`
+  + ISLEMLER.map(o => `<option value="${esc(o)}"${sel.has(o) ? " disabled" : ""}>${esc(o)}${sel.has(o) ? " ✓" : ""}</option>`).join("");
+const islemEtiket = sel => [...sel].map(o => `<button type="button" class="opt on" data-act="islem" data-v="${esc(o)}" title="Kaldır">${esc(o)} <span class="x">✕</span></button>`).join("");
+function islemCiz(){ const s = $("#islemSec"), o = $("#islemOpts"); if(s){ s.innerHTML = islemSecenek(SH.islem); s.value = ""; } if(o) o.innerHTML = islemEtiket(SH.islem); }
 const USER_DOMAIN = "@gurel.local";
 const EPOSTA_UYARI = false;   // Mert: "şimdilik sadece uygulama içinde gecikme uyarısı" (e-posta kodu duruyor, menüde gizli)
 const FIRMA = { ad:"GÜREL KUYUMCULUK", adres:"Merkez Mah. 19 Mayıs Cad. Gürel Apt. No:38 B, Gölcük / Kocaeli", tel:"0532 065 41 41" };
@@ -980,7 +988,7 @@ function jobForm(j){
     ${paid ? `<div class="info warn">Bu iş, ödendi olarak kapatılmış bir haftada. Fiyatı değiştirirsen ödenen tutarla fark oluşur.</div>` : ""}
     ${photoBlock()}
     <div class="field"><label>Ürün *</label><input name="urun" required value="${esc(j.urun)}" placeholder="Örn. 14A Yüzük, 22A Bilezik"></div>
-    <div class="field"><label>Yapılacak işlem</label><div class="opts" id="islemOpts">${[...ISLEMLER, ...[...sel].filter(x => !ISLEMLER.includes(x))].map(o => `<button type="button" class="opt ${sel.has(o)?"on":""}" data-act="islem" data-v="${esc(o)}">${esc(o)}</button>`).join("")}</div></div>
+    <div class="field"><label for="islemSec">Yapılacak işlem</label><select id="islemSec">${islemSecenek(sel)}</select><div class="opts islemler" id="islemOpts">${islemEtiket(sel)}</div></div>
     <div class="field"><label>Açıklama / not</label><textarea name="aciklama" placeholder="Tamirciye not">${esc(j.aciklama || "")}</textarea></div>
     <div class="row2">
       <div class="field"><label>Gönderilen gram</label><input name="gonderilen_gram" inputmode="decimal" value="${esc(numIn(j.gonderilen_gram))}" placeholder="0,00"></div>
@@ -1533,7 +1541,7 @@ document.addEventListener("click", async e => {
     else if(a === "new") openJobSheet(null);
     else if(a === "open-job") openJobSheet(Number(el.dataset.id));
     else if(a === "close") closeSheet();
-    else if(a === "islem"){ const v = el.dataset.v; SH.islem.has(v) ? SH.islem.delete(v) : SH.islem.add(v); el.classList.toggle("on"); }
+    else if(a === "islem"){ SH.islem.delete(el.dataset.v); islemCiz(); }
     else if(a === "cam-open") await camOpen();
     else if(a === "cam-close") camClose();
     else if(a === "cam-retry") await camStart("");
@@ -1621,11 +1629,12 @@ document.addEventListener("keydown", e => {
 
 function snapshotInputs(){ if(!SH) return; SH.values = {}; $("#sheet").querySelectorAll("input[name],textarea[name],select[name]").forEach(el => { if(el.type !== "file") SH.values[el.name] = el.value; }); }
 function rerenderJobForm(){ const f = $("#jobForm"); if(!f) return; const sel = SH.islem; const wrap = document.createElement("div"); wrap.innerHTML = jobForm(SH.job); f.replaceWith(wrap.firstElementChild);
-  SH.islem = sel; $("#islemOpts").querySelectorAll(".opt").forEach(b => b.classList.toggle("on", sel.has(b.dataset.v))); restoreSheetInputs(); updFormFire(); }
+  SH.islem = sel; islemCiz(); restoreSheetInputs(); updFormFire(); }
 
 document.addEventListener("change", async e => {
   const el = e.target;
   try{
+    if(el.id === "islemSec"){ if(el.value) SH.islem.add(el.value); islemCiz(); return; }
     if(el.id === "pwShow"){ $("#pwForm").querySelectorAll("input[type=password],input[data-pw]").forEach(i => { i.dataset.pw = 1; i.type = el.checked ? "text" : "password"; }); return; }
     if(el.id === "photoIn" && el.files[0]){
       setFormPhoto(await compressImage(el.files[0]));
