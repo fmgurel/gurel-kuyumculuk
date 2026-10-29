@@ -264,6 +264,7 @@
   .hesap .ht{font-size:12px; color:var(--muted); margin-bottom:6px; letter-spacing:.03em;}
   .hesap .hr{display:flex; justify-content:space-between; gap:10px; font-size:13.5px; padding:2px 0; font-variant-numeric:tabular-nums;}
   .hesap .hr span:first-child{color:var(--muted);}
+  .hesap .hr span:last-child{white-space:nowrap;}
   .hesap .hk{font-weight:700; padding-top:6px; margin-top:4px; border-top:1px dashed var(--line);}
   .hesap .hk span:first-child{color:inherit;}
   .hesap .kar .hk{border-top:none; margin-top:0; padding-top:0;}
@@ -971,9 +972,29 @@ function sadeGeldiCard(o){
       <div class="cardbtns">
         ${ph ? `<button class="btn sm wa" data-act="wa" data-id="${o.id}"${o.musteri_haber ? ` title="Haber verildi: ${esc(fDateTime(o.musteri_haber))} · tekrar göndermek için dokun"` : ""}>${o.musteri_haber ? "✓ Haber verildi" : "WhatsApp'tan haber ver"}</button>` : ""}
         <button class="btn sm" data-act="teslim" data-id="${o.id}">✓ Müşteriye teslim et</button>
+        <button class="btn sm ghost" data-act="hesap" data-id="${o.id}">💰 Hesap</button>
       </div>
     </div>
   </div>`;
+}
+// Ayrıntılı hesap penceresi (Geldi kartındaki "Hesap" düğmesi): sadece görüntüleme; ödeme eklemek için sipariş açılır
+function openHesapSheet(id){
+  const o = findO(id); if(!o) return;
+  SH = { hesap:{ id } };
+  const ted = tedOf(o.tedarikci_id), g = o.gram != null ? fGr(o.gram) : "—";
+  openSheet(`<div class="sh"><h2>Hesap · ${esc(o.urun)}</h2><button class="x" data-act="close">✕</button></div>
+    <div class="kv">
+      <span class="k">Müşteri</span><span>${esc(o.musteri_ad || "—")}${o.musteri_tel ? " · " + esc(telGoster(o.musteri_tel)) : ""}</span>
+      <span class="k">Toptancı</span><span>${esc(ted ? ted.ad : "—")}</span>
+      <span class="k">Gram</span><span>sipariş ≈ ${g}${o.gelen_gram != null ? ` → gelen <b>${fGr(o.gelen_gram)}</b>` : " · gelen gram girilmedi"}</span>
+    </div>
+    ${hesapBox(o)}
+    <div class="section">Müşteriden alınan ödeme</div>${payList(o, true)}
+    <div class="section">Toptancıya ödeme</div>${topPayList(o, true)}
+    <div class="actions">
+      <button class="btn gold" type="button" data-act="open" data-id="${o.id}">Siparişi aç · ödeme ekle</button>
+      <button class="btn" type="button" data-act="teslim" data-id="${o.id}">✓ Müşteriye teslim et</button>
+    </div>`);
 }
 function card(o, opts = {}){
   if(opts.toptanci && o.durum === "verildi") return sadeCard(o);
@@ -1131,27 +1152,27 @@ function updHas(){
     o.textContent = (tu > 0 && ku > 0) ? `= ${fHas(hasOf(tu, ku))}` : "";
   });
 }
-function payList(o){
+function payList(o, ro){
   const L = paysOf(o.id), top = odemeTop(o.id);
   if(!L.length) return `<div class="fire">Henüz ödeme alınmadı.</div>`;
   return `<div class="paylist">${L.map(p => `<div class="payrow">
       <div class="pi"><div>${esc(fDateTime(p.zaman))} · kur ${fTL(p.has_kuru)}</div>
         <div class="pd">${esc(nameOf(p.alan) || "?")}${p.aciklama ? " · " + esc(p.aciklama) : ""}</div></div>
       <div><div class="pt">${fTL(p.tutar)}</div><div class="ph">${fHas(p.has_gram)}</div></div>
-      ${canDelPay(p, o) ? `<button type="button" class="iconbtn" data-act="pay-del" data-pid="${p.id}" title="Ödemeyi sil" aria-label="Ödemeyi sil">🗑</button>` : "<span></span>"}
+      ${!ro && canDelPay(p, o) ? `<button type="button" class="iconbtn" data-act="pay-del" data-pid="${p.id}" title="Ödemeyi sil" aria-label="Ödemeyi sil">🗑</button>` : "<span></span>"}
     </div>`).join("")}
     <div class="paytot"><span>Toplam alınan (${L.length})</span><span><b>${fTL(top.tl)}</b> · <b style="color:var(--gold)">${fHas(top.has)}</b></span></div>
   </div>`;
 }
 
-function topPayList(o){
+function topPayList(o, ro){
   const L = tpaysOf(o.id), top = topTop(o.id);
   if(!L.length) return `<div class="fire">Toptancıya henüz ödeme yapılmadı.</div>`;
   return `<div class="paylist">${L.map(p => `<div class="payrow">
       <div class="pi"><div>${esc(fDateTime(p.zaman))}${p.tutar != null ? ` · kur ${fTL(p.has_kuru)}` : " · has olarak"}</div>
         <div class="pd">${esc(nameOf(p.alan) || "?")}${p.aciklama ? " · " + esc(p.aciklama) : ""}</div></div>
       <div><div class="pt">${p.tutar != null ? fTL(p.tutar) : fHas(p.has_gram)}</div>${p.tutar != null ? `<div class="ph">${fHas(p.has_gram)}</div>` : ""}</div>
-      ${canDelTopPay(p) ? `<button type="button" class="iconbtn" data-act="tpay-del" data-pid="${p.id}" title="Ödemeyi sil" aria-label="Ödemeyi sil">🗑</button>` : "<span></span>"}
+      ${!ro && canDelTopPay(p) ? `<button type="button" class="iconbtn" data-act="tpay-del" data-pid="${p.id}" title="Ödemeyi sil" aria-label="Ödemeyi sil">🗑</button>` : "<span></span>"}
     </div>`).join("")}
     <div class="paytot"><span>Toplam ödenen (${L.length})</span><span>${top.tl ? `<b>${fTL(top.tl)}</b> · ` : ""}<b style="color:var(--gold)">${fHas(top.has)}</b></span></div>
   </div>`;
@@ -1750,6 +1771,7 @@ document.addEventListener("click", async e => {
     else if(a === "demo-as"){ api._as(el.dataset.u); await boot(); }
     else if(a === "new") await openOrder(null);
     else if(a === "open") await openOrder(Number(el.dataset.id));
+    else if(a === "hesap") openHesapSheet(Number(el.dataset.id));
     else if(a === "close") closeSheet();
     else if(a === "ayar"){ const v = Number(el.dataset.v); SH.ayar = SH.ayar === v ? null : v;
       $("#ayarOpts").querySelectorAll(".opt").forEach(b => b.classList.toggle("on", Number(b.dataset.v) === SH.ayar)); }
