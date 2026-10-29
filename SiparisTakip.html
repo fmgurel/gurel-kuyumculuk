@@ -269,6 +269,9 @@
   .hesap .hk{font-weight:700; padding-top:6px; margin-top:4px; border-top:1px dashed var(--line);}
   .hesap .hk span:first-child{color:inherit;}
   .hesap .kar .hk{border-top:none; margin-top:0; padding-top:0;}
+  .hesap .hr.mo{padding-top:4px;}
+  .hesap .hr.od{font-size:12.5px; padding-left:12px;}
+  .hesap .hr.od span:last-child{color:var(--muted);}
   .al{color:var(--amber);} .ve{color:var(--red);} .ok{color:#8fc79a;}
   .milout{font-size:13px; color:var(--gold); margin:-4px 0 10px; min-height:18px;}
   .jm.bakiye{font-size:12.5px;}
@@ -787,7 +790,7 @@ function hesap(o){
 // [etiket, miktar, sınıf]: pozitif = biz ödeyeceğiz (toptancı) / biz alacağız (müşteri)
 const kalanTop = k => k == null ? null : k > 0.0005 ? ["Toptancıya verecek", fHas(k), "ve"] : k < -0.0005 ? ["Toptancıdan alacak", fHas(-k), "al"] : ["Toptancı hesabı kapandı", "✓", "ok"];
 const kalanMus = k => k == null ? null : k > 0.0005 ? ["Müşteriden alacak", fHas(k), "al"] : k < -0.0005 ? ["Müşteriye verecek", fHas(-k), "ve"] : ["Müşteri hesabı kapandı", "✓", "ok"];
-function hesapBox(o){
+function hesapBox(o, detay){ // detay: müşteri ödemeleri tek tek müşteri kutusunun içinde
   // Satırlar sayısal: "Tahmini maliyet  4,00 gr × 935 → 3,74 gr has". Ödenen/alınan satırı sadece ödeme varsa görünür.
   const h = hesap(o), R = (k, v, cls) => `<div class="hr ${cls || ""}"><span>${k}</span><span>${v}</span></div>`;
   const kt = kalanTop(h.topKalan), km = kalanMus(h.musKalan);
@@ -803,8 +806,9 @@ function hesapBox(o){
     ${h.sm == null ? `<div class="fire" style="margin:0 0 4px">Satış milyemi girilmedi; müşteri hesabı için yaz.</div>` :
       R(carp("Tahmini satış", gr, h.sm), h.tSat != null ? fHas(h.tSat) : "sipariş gramı yok") +
       R(carp("Net satış", gg, h.sm), h.nSat != null ? fHas(h.nSat) : "henüz gelmedi")}
-    ${h.musOd > 0 ? R("Müşteriden alınan", fHas(h.musOd)) : ""}
-    ${km ? R(km[0], km[1], "hk " + km[2]) : ""}</div>`;
+    ${km ? R(km[0], km[1], "hk " + km[2]) : ""}
+    ${(() => { const od = odemeTop(o.id); return R("Müşteri ödemesi", od.n ? `${fTL(od.tl)} · ${fHas(od.has)}` : "ödeme yok", "mo"); })()}
+    ${detay ? paysOf(o.id).map(p => R(`${esc(fDateTime(p.zaman))} · kur ${fTL(p.has_kuru)}${p.aciklama ? " · " + esc(p.aciklama) : ""}`, `${fTL(p.tutar)} · ${fHas(p.has_gram)}`, "od")).join("") : ""}</div>`;
   const kar = h.kar != null ? `<div class="hb kar">${R(h.net ? "Kâr (net)" : "Kâr (tahmini)", fHas(h.kar), "hk")}</div>` : "";
   return `<div class="hesap">${h.iptal ? `<div class="hb fire" style="margin:0">İptal: maliyet ve satış 0 sayılır; kalan sadece ödemelerden.</div>` : ""}${top}${mus}${kar}</div>`;
 }
@@ -985,19 +989,12 @@ function sadeGeldiCard(o){
 function openHesapSheet(id){
   const o = findO(id); if(!o) return;
   SH = { hesap:{ id } };
-  const ted = tedOf(o.tedarikci_id), g = o.gram != null ? fGr(o.gram) : "—";
   openSheet(`<div class="sh"><h2>Hesap · ${esc(o.urun)}</h2><button class="x" data-act="close">✕</button></div>
-    <div class="kv">
-      <span class="k">Müşteri</span><span>${esc(o.musteri_ad || "—")}${o.musteri_tel ? " · " + esc(telGoster(o.musteri_tel)) : ""}</span>
-      <span class="k">Toptancı</span><span>${esc(ted ? ted.ad : "—")}</span>
-      <span class="k">Gram</span><span>sipariş ≈ ${g}${o.gelen_gram != null ? ` → gelen <b>${fGr(o.gelen_gram)}</b>` : " · gelen gram girilmedi"}</span>
-    </div>
-    ${hesapBox(o)}
-    ${odemeTop(o.id).n ? `<div class="section">Müşteriden alınan ödeme</div>${payList(o, true)}` : ""}
+    ${hesapBox(o, true)}
     ${topTop(o.id).n ? `<div class="section">Toptancıya ödeme</div>${topPayList(o, true)}` : ""}
     <div class="actions">
       <button class="btn gold" type="button" data-act="open" data-id="${o.id}">Siparişi aç · ödeme ekle</button>
-      <button class="btn" type="button" data-act="teslim" data-id="${o.id}">✓ Müşteriye teslim et</button>
+      ${o.durum === "geldi" ? `<button class="btn" type="button" data-act="teslim" data-id="${o.id}">✓ Müşteriye teslim et</button>` : ""}
     </div>`);
 }
 function card(o, opts = {}){
