@@ -487,6 +487,30 @@ function sadeTarih(verildi, beklenen, t){
                        : `<span class="${uzun ? "tuyar" : "tyok"}">Teslim tarihi yok${uzun ? ` · ${gun} gündür` : ""}</span>`;
   return { late, uzun, html:`<div class="jm sadet">Verildi ${fDate(verildi)} → ${sag}</div>` };
 }
+// Müşteri telefonu: alan "905" ile hazır gelir, yazarken "905xx xxx xx xx" biçimine girer.
+// 0532… ya da 532… yazılır/yapıştırılırsa 90532…'ye çevrilir. Sadece "905" kalırsa boş sayılır.
+const TEL_ON = "905";
+function telRakam(v){ let d = String(v || "").replace(/\D/g, ""); if(d.startsWith("00")) d = d.slice(2);
+  if(d.startsWith("0")) d = "9" + d; else if(d.startsWith("5")) d = "90" + d;
+  return d.startsWith("90") ? d.slice(0, 12) : d.slice(0, 15); }
+function telBicim(v){ const d = telRakam(v); return [d.slice(0, 5), d.slice(5, 8), d.slice(8, 10), d.slice(10)].filter(Boolean).join(" "); }
+const telGoster = v => { const d = telRakam(v); return d.length === 12 && d.startsWith("90") ? telBicim(v) : (v || ""); };
+const telDeger = v => v ? telGoster(v) : TEL_ON;
+function telKaydet(v){ const d = telRakam(v); if(d.length <= 3) return null;
+  if(d.startsWith("905") && d.length < 12) throw new Error("Telefon numarası eksik (905xx xxx xx xx).");
+  return telBicim(v); }
+function telInput(el, tip){
+  let raw = el.value, pos = el.selectionStart ?? raw.length;
+  if(tip === "deleteContentBackward" && raw.replace(/\D/g, "") === (el.dataset.d || "") && pos > 0){ // boşluk silindiyse önündeki rakamı sil
+    const i = raw.slice(0, pos).search(/\d\D*$/); if(i >= 0){ raw = raw.slice(0, i) + raw.slice(i + 1); pos = i; }
+  }
+  const rd = raw.replace(/\D/g, ""), ek = rd.startsWith("00") ? -2 : rd.startsWith("0") ? 1 : rd.startsWith("5") ? 2 : 0;
+  const k = Math.max(0, raw.slice(0, pos).replace(/\D/g, "").length + (pos > 0 ? ek : 0));
+  const f = telBicim(raw); el.value = f; el.dataset.d = f.replace(/\D/g, "");
+  let p = 0, c = 0; while(p < f.length && c < k){ if(/\d/.test(f[p])) c++; p++; }
+  try { el.setSelectionRange(p, p); } catch(_){}
+}
+document.addEventListener("input", e => { const el = e.target; if(el && el.matches && el.matches("input[data-tel]")) telInput(el, e.inputType); });
 /* ============ /Gecikme bandı ============ */
 
 /* ============ Veri katmanı: Supabase ============ */
@@ -792,7 +816,7 @@ function sadeJobCard(j){
   const d = sadeTarih(j.verilis_tarihi, j.beklenen_tarih, todayISO());
   return `<div class="job sade ${d.late ? "late" : d.uzun ? "uzun" : ""}" data-act="open-job" data-id="${j.id}">
     <div class="jb">
-      <div class="jt"><span class="no">#${j.id}</span>${esc(j.urun)}</div>
+      <div class="jt">${esc(j.urun)}</div>
       ${d.html}
       ${j.musteri && j.musteri.ad ? `<div class="jm cust">👤 ${esc(j.musteri.ad)}</div>` : ""}
       <div class="cardbtns"><button class="btn sm" data-act="complete-hizli" data-id="${j.id}">✓ Tamirden geldi</button></div>
@@ -858,7 +882,7 @@ function hazirCard(j){
     ${thumb(j)}
     <div class="jb">
       <div class="jt"><span class="no">#${j.id}</span>${esc(j.urun)}</div>
-      ${m ? `<div class="jm cust">👤 ${esc(j.musteri.ad || "—")}${j.musteri.telefon ? " · " + esc(j.musteri.telefon) : ""}</div>`
+      ${m ? `<div class="jm cust">👤 ${esc(j.musteri.ad || "—")}${j.musteri.telefon ? " · " + esc(telGoster(j.musteri.telefon)) : ""}</div>`
           : `<div class="jm nocust">👤 Müşteri girilmedi <span class="muted">· eklemek için karta dokun</span></div>`}
       <div class="jm ${gec ? "gec" : ""}">Tamirden geldi ${fDate(j.donus_tarihi)} · ${gun === 0 ? "bugün" : gun + " gündür bekliyor"}</div>
       ${m ? `<div class="jm">${j.musteri_haber ? `📨 Haber verildi · ${fDateTime(j.musteri_haber)}` : `<span style="color:var(--amber)">Henüz haber verilmedi</span>`}</div>` : ""}
@@ -1032,7 +1056,7 @@ function jobForm(j){
     <div class="section">Müşteri (tamirci görmez)</div>
     <div class="row2">
       <div class="field"><label>Ad soyad</label><input name="m_ad" value="${esc(j.musteri?.ad || "")}"></div>
-      <div class="field"><label>Telefon</label><input name="m_tel" type="tel" value="${esc(j.musteri?.telefon || "")}"></div>
+      <div class="field"><label>Telefon</label><input name="m_tel" type="tel" inputmode="tel" data-tel maxlength="19" value="${esc(telDeger(j.musteri?.telefon))}" placeholder="905xx xxx xx xx"></div>
     </div>
     ${j.durum === "tamamlandi" ? teslimInfo(j) : `<div class="fire" style="margin-top:-6px">İş tamirden gelince <b>Teslime Hazır</b> listesine düşer. Müşteri girilirse WhatsApp'tan haber verme ve imzalı teslim de açılır.</div>`}
     <div class="actions">
@@ -1113,8 +1137,9 @@ function readJobForm(){
     fields.musteri_teslim_tarihi = v("musteri_teslim_tarihi") || null;
     if(fields.musteri_teslim_tarihi && fields.donus_tarihi && fields.musteri_teslim_tarihi < fields.donus_tarihi) throw new Error("Müşteriye teslim, tamirden dönüşten önce olamaz.");
   }
-  if(SH.job && SH.job.musteri && SH.job.musteri.imza_path && !v("m_ad") && !v("m_tel")) throw new Error("İmzalı teslim kaydı olan işte müşteri bilgisi silinemez.");
-  return { fields, fiyat:fi, musteri:{ ad:v("m_ad") || null, telefon:v("m_tel") || null } };
+  const tel = telKaydet(v("m_tel"));
+  if(SH.job && SH.job.musteri && SH.job.musteri.imza_path && !v("m_ad") && !tel) throw new Error("İmzalı teslim kaydı olan işte müşteri bilgisi silinemez.");
+  return { fields, fiyat:fi, musteri:{ ad:v("m_ad") || null, telefon:tel } };
 }
 
 async function saveJob(withFis){
@@ -1296,7 +1321,7 @@ async function renderFis(j){
     T(teslim ? "TAMİR EMANET VE TESLİM FİŞİ" : "TAMİR EMANET FİŞİ", 28, "700", INK, "center", y); y += 46;
     T(`Fiş No: #${j.id}`, 22, "700", INK, "left", y); T(`Tarih: ${fTR(j.verilis_tarihi)}`, 20, "400", INK, "right", y); y += 40;
     HR(y, LINE); y += 18;
-    const rows = [["Müşteri", j.musteri?.ad || "—"], ["Telefon", j.musteri?.telefon || "—"], ["Ürün", j.urun], ["Yapılacak işlem", j.islem || "—"]];
+    const rows = [["Müşteri", j.musteri?.ad || "—"], ["Telefon", telGoster(j.musteri?.telefon) || "—"], ["Ürün", j.urun], ["Yapılacak işlem", j.islem || "—"]];
     if(j.aciklama) rows.push(["Açıklama", j.aciklama]);
     rows.push(["Gram", j.gonderilen_gram != null ? fGr(j.gonderilen_gram) : "—"]);
     rows.push(["Tahmini teslim", j.beklenen_tarih ? fTR(j.beklenen_tarih) : "—"]);
@@ -1373,7 +1398,7 @@ function openTeslimSheet(id){
   const ad = j.musteri?.ad || "Müşteri";
   SH = { teslim:{ id, pts:0 } };
   openSheet(`<div class="sh"><h2>Müşteriye teslim · <span class="no">#${j.id}</span></h2><button class="x" data-act="close">✕</button></div>
-    <div class="kv"><span class="k">Müşteri</span><span>${esc(ad)}${j.musteri?.telefon ? " · " + esc(j.musteri.telefon) : ""}</span>
+    <div class="kv"><span class="k">Müşteri</span><span>${esc(ad)}${j.musteri?.telefon ? " · " + esc(telGoster(j.musteri.telefon)) : ""}</span>
       <span class="k">Ürün</span><span>${esc(j.urun)}</span>
       <span class="k">Tarih / saat</span><span id="teslimSaat">${esc(fTRsaat(new Date()))} <span style="color:var(--muted)">(kayıt anında sunucudan alınır)</span></span></div>
     <div class="beyan">Ben <b>${esc(ad)}</b>, <b>#${j.id} ${esc(j.urun)}</b> ürünümü eksiksiz olarak teslim aldım.</div>
