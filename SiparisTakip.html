@@ -100,6 +100,7 @@
   .jt .no{color:var(--gold); margin-right:6px;}
   .jm{font-size:12.5px; color:var(--muted); margin-top:3px;}
   .jm.cust{color:var(--ink); opacity:.8;}
+  .jm.gramyok{color:var(--amber);}
   .jm.nocust{color:var(--amber);}
   .jm .muted{color:var(--muted);}
   .jr{text-align:right; flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:6px;}
@@ -688,6 +689,14 @@ const canDelPay = (p, o) => isY() || (p.alan === S.me.id && Date.now() - new Dat
 const canDelOrder = o => isY() || (o.durum !== "teslim" && odemeTop(o.id).n === 0);
 const DURUM = { verildi:["Toptancıda","b-info"], geldi:["Geldi","b-wait"], teslim:["Teslim edildi","b-ok"], iptal:["İptal","b-gray"] };
 const gramText = o => o.gelen_gram != null ? fGr(o.gelen_gram) : (o.gram != null ? "≈ " + fGr(o.gram) : "");
+// Geldi/teslim kartında: sipariş ≈ gram → gelen (tartılan) gram ve farkı; gelen gram yoksa uyarı
+function gramFark(o){
+  if(o.durum !== "geldi" && o.durum !== "teslim") return "";
+  if(o.gelen_gram == null) return `<div class="jm gramyok">⚖ Gelen gram girilmedi</div>`;
+  if(o.gram == null) return `<div class="jm">⚖ Gelen ${fGr(o.gelen_gram)}</div>`;
+  const d = Math.round((Number(o.gelen_gram) - Number(o.gram)) * 1000) / 1000;
+  return `<div class="jm">⚖ Sipariş ≈ ${fGr(o.gram)} → Gelen <b>${fGr(o.gelen_gram)}</b>${d ? ` (${d > 0 ? "+" : "−"}${fGr(Math.abs(d))})` : ""}</div>`;
+}
 
 const listToptanci = () => S.orders.filter(o => o.durum === "verildi")
   .sort((a, b) => (a.beklenen_tarih || "9999").localeCompare(b.beklenen_tarih || "9999") || a.siparis_tarihi.localeCompare(b.siparis_tarihi) || a.id - b.id);
@@ -834,6 +843,7 @@ function card(o, opts = {}){
       <div class="jt"><span class="no">#${o.id}</span>${esc(o.urun)}</div>
       ${chips ? `<div class="chips">${chips}</div>` : ""}
       <div class="jm ${bekl ? "gec" : ""}">${meta}</div>
+      ${gramFark(o)}
       ${o.musteri_ad || o.musteri_tel ? `<div class="jm cust">👤 ${esc(o.musteri_ad || "—")}${o.musteri_tel ? " · " + esc(o.musteri_tel) : ""}</div>` : ""}
       ${cal ? `<div class="jm">Siparişi alan: ${esc(cal.ad)}</div>` : ""}
       ${opts.geldi ? `<div class="jm">${o.musteri_haber ? `📨 Haber verildi · ${fDateTime(o.musteri_haber)}` : `<span style="color:var(--amber)">Müşteriye henüz haber verilmedi</span>`}</div>
@@ -1004,7 +1014,7 @@ function orderForm(o){
     <div class="field"><label>Ayar</label><div class="opts" id="ayarOpts">${[...AYARLAR, ...(o.ayar && !AYARLAR.includes(o.ayar) ? [o.ayar] : [])].map(a => `<button type="button" class="opt ${SH.ayar === a ? "on" : ""}" data-act="ayar" data-v="${a}">${a} ayar</button>`).join("")}</div></div>
     <div class="row2">
       <div class="field"><label>Gram (sipariş, yaklaşık)</label><input name="gram" inputmode="decimal" value="${esc(numIn(o.gram))}" placeholder="0,00"></div>
-      ${geldi ? `<div class="field"><label>Gelen gram (tartılan)</label><input name="gelen_gram" inputmode="decimal" value="${esc(numIn(o.gelen_gram))}" placeholder="0,00"></div>` : "<div></div>"}
+      ${geldi ? `<div class="field"><label>Gelen gram (tartılan)${o.durum === "geldi" ? " *" : ""}</label><input name="gelen_gram" inputmode="decimal" value="${esc(numIn(o.gelen_gram))}" placeholder="Tartıp yaz"${o.durum === "geldi" ? " required" : ""}></div>` : "<div></div>"}
     </div>
     <div class="row2">
       <div class="field"><label>Toptancı</label>${selectTed(o)}</div>
@@ -1082,6 +1092,7 @@ function readOrderForm(){
   const g = parseNum(v("gram")), gg = parseNum(v("gelen_gram"));
   if(Number.isNaN(g) || (g != null && g <= 0)) throw new Error("Gram geçersiz.");
   if(Number.isNaN(gg) || (gg != null && gg <= 0)) throw new Error("Gelen gram geçersiz.");
+  if(f.elements.gelen_gram && f.elements.gelen_gram.required && gg == null) throw new Error("Gelen gram gerekli (tartıp yaz).");
   const tedSel = v("tedarikci_id"), calSel = v("calisan_id");
   if(tedSel === "__yeni" && !v("ted_yeni")) throw new Error("Yeni toptancının adını yaz.");
   if(calSel === "__yeni" && !v("cal_yeni")) throw new Error("Yeni çalışanın adını yaz.");
@@ -1138,18 +1149,20 @@ function openGeldiSheet(id){
     <form id="geldiForm">
       <div class="row2">
         <div class="field"><label>Geliş tarihi</label><input name="gelis_tarihi" type="date" required value="${todayISO()}"></div>
-        <div class="field"><label>Gelen gram (tartılan)</label><input name="gelen_gram" inputmode="decimal" value="" placeholder="${gram0 != null ? "Sipariş ≈ " + esc(numIn(gram0)) : "0,00"}"></div>
+        <div class="field"><label>Gelen gram (tartılan) *</label><input name="gelen_gram" inputmode="decimal" value="" required autofocus placeholder="${gram0 != null ? "Sipariş ≈ " + esc(numIn(gram0)) : "Tartıp yaz"}"></div>
       </div>
       ${o.musteri_ad || o.musteri_tel || SH.pending.fields.musteri_ad || SH.pending.fields.musteri_tel
         ? `<div class="info">Kaydedince sipariş <b>Geldi</b> sekmesine geçer; oradan müşteriye WhatsApp'tan haber verebilirsin.</div>`
         : `<div class="info warn">Bu siparişte müşteri bilgisi yok.</div>`}
       <button class="btn gold block" type="submit">✓ Geldi olarak kaydet</button>
     </form>`);
+  setTimeout(() => { const g = $("#geldiForm") && $("#geldiForm").elements.gelen_gram; if(g) g.focus(); }, 60);
 }
 async function doGeldi(){
   const f = $("#geldiForm"), o = SH.job, P = SH.pending;
   const gg = parseNum(f.elements.gelen_gram.value), gt = f.elements.gelis_tarihi.value;
-  if(Number.isNaN(gg) || (gg != null && gg <= 0)) throw new Error("Gelen gram geçersiz.");
+  if(gg == null) throw new Error("Gelen gram gerekli (tartıp yaz).");
+  if(Number.isNaN(gg) || gg <= 0) throw new Error("Gelen gram geçersiz.");
   if(!gt) throw new Error("Geliş tarihi gerekli.");
   if(gt < P.fields.siparis_tarihi) throw new Error("Geliş tarihi, sipariş tarihinden önce olamaz.");
   if(P.hizli) await api.updateOrder(o.id, { durum:"geldi", gelis_tarihi:gt, gelen_gram:gg }, null, o.foto_path);
@@ -1173,6 +1186,8 @@ function openTeslimSheet(id){
       <span class="k">Ürün</span><span>${esc(o.urun)}${o.ayar ? " · " + o.ayar + " ayar" : ""}${gramText(o) ? " · " + esc(gramText(o)) : ""}</span>
       <span class="k">Alınan</span><span>${top.n ? `<b>${fTL(top.tl)}</b> · ${fHas(top.has)} (${top.n} ödeme)` : "Ödeme kaydı yok"}</span>
       <span class="k">Tarih / saat</span><span>${esc(fTRsaat(new Date()))} <span style="color:var(--muted)">(kayıt anında sunucudan alınır)</span></span></div>
+    ${o.gelen_gram == null ? `<div class="info warn">Bu siparişte gelen gram girilmemiş. Teslimden önce tartıp yaz.</div>
+      <div class="field"><label>Gelen gram (tartılan) *</label><input name="gelen_gram" inputmode="decimal" required placeholder="${o.gram != null ? "Sipariş ≈ " + esc(numIn(o.gram)) : "Tartıp yaz"}"></div>` : ""}
     ${payInputs("Teslimde alınan ödeme (varsa)")}
     <div class="beyan">Ben <b>${esc(ad)}</b>, <b>#${o.id} ${esc(o.urun)}</b> siparişimi eksiksiz olarak teslim aldım.</div>
     <canvas class="sigpad" id="sigpad"></canvas>
@@ -1208,7 +1223,16 @@ async function sigBlob(){
   return await new Promise(res => c.toBlob(res, "image/png"));
 }
 
-async function doDeliver(id, blob, pay){
+// Teslim penceresindeki gelen gram (alan yoksa undefined; boş/geçersizse hata)
+function teslimGram(){
+  const el = $("#teslimForm") && $("#teslimForm").elements.gelen_gram; if(!el) return undefined;
+  const gg = parseNum(el.value.trim());
+  if(gg == null){ el.focus(); throw new Error("Gelen gram gerekli (tartıp yaz)."); }
+  if(Number.isNaN(gg) || gg <= 0){ el.focus(); throw new Error("Gelen gram geçersiz."); }
+  return gg;
+}
+async function doDeliver(id, blob, pay, gg){
+  if(gg !== undefined){ const o = findO(id); await api.updateOrder(id, { gelen_gram:gg }, null, o && o.foto_path); }
   if(pay) await api.addPayment(id, pay.tutar, pay.kur, pay.not);
   const z = await api.deliver(id, blob);
   closeSheet(); toast(`#${id} müşteriye teslim edildi · ${fTRsaat(z || new Date())}`); await loadAll();
@@ -1522,10 +1546,10 @@ document.addEventListener("click", async e => {
     }
     else if(a === "teslim") openTeslimSheet(Number(el.dataset.id));
     else if(a === "sig-clear") SH.teslim.clear();
-    else if(a === "sig-save"){ const id = SH.teslim.id, pay = readPay($("#teslimForm")); el.disabled = true;
-      try { await doDeliver(id, await sigBlob(), pay); } catch(err){ el.disabled = false; throw err; } }
-    else if(a === "imzasiz"){ const id = Number(el.dataset.id), o = findO(id), pay = readPay($("#teslimForm"));
-      if(await ask(`#${id} ${esc(o.urun)} <b>imzasız</b> teslim edilsin mi? Kayıtta "imzasız teslim" yazacak; inkâr durumunda kanıtın zayıf olur.`, "İmzasız teslim et", true)) await doDeliver(id, null, pay);
+    else if(a === "sig-save"){ const id = SH.teslim.id, gg = teslimGram(), pay = readPay($("#teslimForm")); el.disabled = true;
+      try { await doDeliver(id, await sigBlob(), pay, gg); } catch(err){ el.disabled = false; throw err; } }
+    else if(a === "imzasiz"){ const id = Number(el.dataset.id), o = findO(id), gg = teslimGram(), pay = readPay($("#teslimForm"));
+      if(await ask(`#${id} ${esc(o.urun)} <b>imzasız</b> teslim edilsin mi? Kayıtta "imzasız teslim" yazacak; inkâr durumunda kanıtın zayıf olur.`, "İmzasız teslim et", true)) await doDeliver(id, null, pay, gg);
       else { initSigPad($("#sigpad")); } }
     else if(a === "fis") await openFis(Number(el.dataset.id));
     else if(a === "fis-dl"){ saveBlob(SH.fis.blob, SH.fis.name); }
