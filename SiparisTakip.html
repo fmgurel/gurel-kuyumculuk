@@ -265,6 +265,7 @@
   .hesap .hr{display:flex; justify-content:space-between; gap:10px; font-size:13.5px; padding:2px 0; font-variant-numeric:tabular-nums;}
   .hesap .hr span:first-child{color:var(--muted);}
   .hesap .hr span:last-child{white-space:nowrap;}
+  .hesap .hx{color:var(--ink); font-weight:500; margin-left:6px; font-variant-numeric:tabular-nums; white-space:nowrap;}
   .hesap .hk{font-weight:700; padding-top:6px; margin-top:4px; border-top:1px dashed var(--line);}
   .hesap .hk span:first-child{color:inherit;}
   .hesap .kar .hk{border-top:none; margin-top:0; padding-top:0;}
@@ -787,19 +788,22 @@ function hesap(o){
 const kalanTop = k => k == null ? null : k > 0.0005 ? ["Toptancıya verecek", fHas(k), "ve"] : k < -0.0005 ? ["Toptancıdan alacak", fHas(-k), "al"] : ["Toptancı hesabı kapandı", "✓", "ok"];
 const kalanMus = k => k == null ? null : k > 0.0005 ? ["Müşteriden alacak", fHas(k), "al"] : k < -0.0005 ? ["Müşteriye verecek", fHas(-k), "ve"] : ["Müşteri hesabı kapandı", "✓", "ok"];
 function hesapBox(o){
+  // Satırlar sayısal: "Tahmini maliyet  4,00 gr × 935 → 3,74 gr has". Ödenen/alınan satırı sadece ödeme varsa görünür.
   const h = hesap(o), R = (k, v, cls) => `<div class="hr ${cls || ""}"><span>${k}</span><span>${v}</span></div>`;
   const kt = kalanTop(h.topKalan), km = kalanMus(h.musKalan);
-  const top = `<div class="hb"><div class="ht">TOPTANCI${h.m != null ? ` · milyem ${fMil(h.m)}` : ""}</div>
+  const gr = o.gram != null ? Number(o.gram) : null, gg = o.gelen_gram != null ? Number(o.gelen_gram) : null;
+  const carp = (ad, g, m) => `${ad}${g != null ? ` <b class="hx">${fGr(g)} × ${fMil(m)}</b>` : ""}`;
+  const top = `<div class="hb"><div class="ht">TOPTANCI</div>
     ${h.m == null ? `<div class="fire" style="margin:0 0 4px">Toptancı milyemi girilmedi.</div>` :
-      R("Tahmini maliyet (sipariş gramı × milyem)", h.tMal != null ? fHas(h.tMal) : "sipariş gramı yok") +
-      R("Net maliyet (gelen gram × milyem)", h.nMal != null ? fHas(h.nMal) : "henüz gelmedi")}
-    ${R("Toptancıya ödenen", fHas(h.topOd))}
+      R(carp("Tahmini maliyet", gr, h.m), h.tMal != null ? fHas(h.tMal) : "sipariş gramı yok") +
+      R(carp("Net maliyet", gg, h.m), h.nMal != null ? fHas(h.nMal) : "henüz gelmedi")}
+    ${h.topOd > 0 ? R("Toptancıya ödenen", fHas(h.topOd)) : ""}
     ${kt ? R(kt[0], kt[1], "hk " + kt[2]) : ""}</div>`;
-  const mus = `<div class="hb"><div class="ht">MÜŞTERİ${h.sm != null ? ` · satış milyemi ${fMil(h.sm)}` : ""}</div>
+  const mus = `<div class="hb"><div class="ht">MÜŞTERİ</div>
     ${h.sm == null ? `<div class="fire" style="margin:0 0 4px">Satış milyemi girilmedi; müşteri hesabı için yaz.</div>` :
-      R("Tahmini satış (sipariş gramı × milyem)", h.tSat != null ? fHas(h.tSat) : "sipariş gramı yok") +
-      R("Net satış (gelen gram × milyem)", h.nSat != null ? fHas(h.nSat) : "henüz gelmedi")}
-    ${R("Müşteriden alınan", fHas(h.musOd))}
+      R(carp("Tahmini satış", gr, h.sm), h.tSat != null ? fHas(h.tSat) : "sipariş gramı yok") +
+      R(carp("Net satış", gg, h.sm), h.nSat != null ? fHas(h.nSat) : "henüz gelmedi")}
+    ${h.musOd > 0 ? R("Müşteriden alınan", fHas(h.musOd)) : ""}
     ${km ? R(km[0], km[1], "hk " + km[2]) : ""}</div>`;
   const kar = h.kar != null ? `<div class="hb kar">${R(h.net ? "Kâr (net)" : "Kâr (tahmini)", fHas(h.kar), "hk")}</div>` : "";
   return `<div class="hesap">${h.iptal ? `<div class="hb fire" style="margin:0">İptal: maliyet ve satış 0 sayılır; kalan sadece ödemelerden.</div>` : ""}${top}${mus}${kar}</div>`;
@@ -989,8 +993,8 @@ function openHesapSheet(id){
       <span class="k">Gram</span><span>sipariş ≈ ${g}${o.gelen_gram != null ? ` → gelen <b>${fGr(o.gelen_gram)}</b>` : " · gelen gram girilmedi"}</span>
     </div>
     ${hesapBox(o)}
-    <div class="section">Müşteriden alınan ödeme</div>${payList(o, true)}
-    <div class="section">Toptancıya ödeme</div>${topPayList(o, true)}
+    ${odemeTop(o.id).n ? `<div class="section">Müşteriden alınan ödeme</div>${payList(o, true)}` : ""}
+    ${topTop(o.id).n ? `<div class="section">Toptancıya ödeme</div>${topPayList(o, true)}` : ""}
     <div class="actions">
       <button class="btn gold" type="button" data-act="open" data-id="${o.id}">Siparişi aç · ödeme ekle</button>
       <button class="btn" type="button" data-act="teslim" data-id="${o.id}">✓ Müşteriye teslim et</button>
