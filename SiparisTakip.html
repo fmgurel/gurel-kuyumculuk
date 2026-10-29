@@ -691,8 +691,8 @@ const DURUM = { verildi:["Toptancıda","b-info"], geldi:["Geldi","b-wait"], tesl
 const gramText = o => o.gelen_gram != null ? fGr(o.gelen_gram) : (o.gram != null ? "≈ " + fGr(o.gram) : "");
 // Geldi/teslim kartında: sipariş ≈ gram → gelen (tartılan) gram ve farkı; gelen gram yoksa uyarı
 function gramFark(o){
-  if(o.durum !== "geldi" && o.durum !== "teslim") return "";
-  if(o.gelen_gram == null) return `<div class="jm gramyok">⚖ Gelen gram girilmedi</div>`;
+  if(o.durum !== "geldi" && o.durum !== "teslim"){ if(o.durum !== "verildi" || o.gelen_gram == null) return ""; }
+  else if(o.gelen_gram == null) return `<div class="jm gramyok">⚖ Gelen gram girilmedi</div>`;
   if(o.gram == null) return `<div class="jm">⚖ Gelen ${fGr(o.gelen_gram)}</div>`;
   const d = Math.round((Number(o.gelen_gram) - Number(o.gram)) * 1000) / 1000;
   return `<div class="jm">⚖ Sipariş ≈ ${fGr(o.gram)} → Gelen <b>${fGr(o.gelen_gram)}</b>${d ? ` (${d > 0 ? "+" : "−"}${fGr(Math.abs(d))})` : ""}</div>`;
@@ -1007,6 +1007,7 @@ function orderForm(o){
              siparis_tarihi:todayISO(), beklenen_tarih:null, durum:"verildi" };
   if(SH.ayar === undefined) SH.ayar = o.ayar ?? null;
   const geldi = o.durum === "geldi" || o.durum === "teslim";
+  const gelenAlan = !isNew && o.durum !== "iptal"; // toptancıdayken de istenirse yazılır (isteğe bağlı)
   const ph = waPhone(o.musteri_tel);
   return `<form id="orderForm" autocomplete="off">
     ${photoBlock()}
@@ -1014,7 +1015,7 @@ function orderForm(o){
     <div class="field"><label>Ayar</label><div class="opts" id="ayarOpts">${[...AYARLAR, ...(o.ayar && !AYARLAR.includes(o.ayar) ? [o.ayar] : [])].map(a => `<button type="button" class="opt ${SH.ayar === a ? "on" : ""}" data-act="ayar" data-v="${a}">${a} ayar</button>`).join("")}</div></div>
     <div class="row2">
       <div class="field"><label>Gram (sipariş, yaklaşık)</label><input name="gram" inputmode="decimal" value="${esc(numIn(o.gram))}" placeholder="0,00"></div>
-      ${geldi ? `<div class="field"><label>Gelen gram (tartılan)${o.durum === "geldi" ? " *" : ""}</label><input name="gelen_gram" inputmode="decimal" value="${esc(numIn(o.gelen_gram))}" placeholder="Tartıp yaz"${o.durum === "geldi" ? " required" : ""}></div>` : "<div></div>"}
+      ${gelenAlan || geldi ? `<div class="field"><label>Gelen gram (tartılan)${o.durum === "geldi" ? " *" : ""}</label><input name="gelen_gram" inputmode="decimal" value="${esc(numIn(o.gelen_gram))}" placeholder="${o.durum === "verildi" ? "İstenirse şimdi yaz" : "Tartıp yaz"}"${o.durum === "geldi" ? " required" : ""}></div>` : "<div></div>"}
     </div>
     <div class="row2">
       <div class="field"><label>Toptancı</label>${selectTed(o)}</div>
@@ -1144,12 +1145,12 @@ function openGeldiSheet(id){
     SH = { job:k, pending:{ hizli:true, fields:{ siparis_tarihi:k.siparis_tarihi, gram:k.gram, musteri_ad:k.musteri_ad, musteri_tel:k.musteri_tel } } };
   } else { try { SH.pending = readOrderForm(); } catch(e){ return toast(e.message, true); } }
   const o = SH.job;
-  const gram0 = SH.pending.fields.gram;
+  const gram0 = SH.pending.fields.gram, gelen0 = SH.pending.fields.gelen_gram ?? o.gelen_gram ?? null;
   openSheet(`<div class="sh"><h2>Toptancıdan geldi · <span class="no">#${o.id}</span></h2><button class="x" data-act="close">✕</button></div>
     <form id="geldiForm">
       <div class="row2">
         <div class="field"><label>Geliş tarihi</label><input name="gelis_tarihi" type="date" required value="${todayISO()}"></div>
-        <div class="field"><label>Gelen gram (tartılan) *</label><input name="gelen_gram" inputmode="decimal" value="" required autofocus placeholder="${gram0 != null ? "Sipariş ≈ " + esc(numIn(gram0)) : "Tartıp yaz"}"></div>
+        <div class="field"><label>Gelen gram (tartılan) *</label><input name="gelen_gram" inputmode="decimal" value="${esc(numIn(gelen0))}" required autofocus placeholder="${gram0 != null ? "Sipariş ≈ " + esc(numIn(gram0)) : "Tartıp yaz"}"></div>
       </div>
       ${o.musteri_ad || o.musteri_tel || SH.pending.fields.musteri_ad || SH.pending.fields.musteri_tel
         ? `<div class="info">Kaydedince sipariş <b>Geldi</b> sekmesine geçer; oradan müşteriye WhatsApp'tan haber verebilirsin.</div>`
