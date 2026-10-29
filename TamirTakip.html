@@ -100,6 +100,8 @@
   .jt .no{color:var(--gold); margin-right:6px;}
   .jm{font-size:12.5px; color:var(--muted); margin-top:3px;}
   .jm.cust{color:var(--ink); opacity:.8;}
+  .jm.nocust{color:var(--amber);}
+  .jm .muted{color:var(--muted);}
   .jr{text-align:right; flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:6px;}
   .price{font-weight:700; font-size:16px; font-variant-numeric:tabular-nums;}
   .badge{display:inline-block; font-size:11px; font-weight:600; padding:3px 8px; border-radius:6px; letter-spacing:.3px; white-space:nowrap;}
@@ -567,9 +569,9 @@ function makeDemoApi(){
     jobs.push(j); if(m) mus[j.id] = m; return j; };
   const lastMon = addDays(weekStart(t), -7), prevMon = addDays(weekStart(t), -14);
   J({ urun:"22A Bilezik", islem:"Kaynak", gonderilen_gram:12.4, donen_gram:12.38, verilis_tarihi:addDays(prevMon,0), donus_tarihi:addDays(prevMon,2), durum:"tamamlandi", fiyat:350, fiyat_giren:"u2", musteri_teslim_tarihi:addDays(prevMon,3) }, {ad:"Fatma K.", telefon:"0532 111 22 33"});
-  J({ urun:"14A Kolye", islem:"Kilit / klips", gonderilen_gram:4.1, donen_gram:4.1, verilis_tarihi:addDays(prevMon,1), donus_tarihi:addDays(prevMon,4), durum:"tamamlandi", fiyat:200, fiyat_giren:"u2" });
+  J({ urun:"14A Kolye", islem:"Kilit / klips", gonderilen_gram:4.1, donen_gram:4.1, verilis_tarihi:addDays(prevMon,1), donus_tarihi:addDays(prevMon,4), durum:"tamamlandi", fiyat:200, fiyat_giren:"u2", musteri_teslim_tarihi:addDays(prevMon,4) });
   J({ urun:"14A Yüzük", islem:"Boy ayarı", gonderilen_gram:2.9, donen_gram:2.95, verilis_tarihi:addDays(lastMon,0), donus_tarihi:addDays(lastMon,1), durum:"tamamlandi", fiyat:250, fiyat_giren:"u2" }, {ad:"Ali V.", telefon:""});
-  J({ urun:"22A Bilezik", islem:"Kaynak, Cila", gonderilen_gram:20.07, donen_gram:20.02, verilis_tarihi:addDays(lastMon,1), donus_tarihi:addDays(lastMon,3), durum:"tamamlandi", fiyat:500, fiyat_giren:"u1" });
+  J({ urun:"22A Bilezik", islem:"Kaynak, Cila", gonderilen_gram:20.07, donen_gram:20.02, verilis_tarihi:addDays(lastMon,1), donus_tarihi:addDays(lastMon,3), durum:"tamamlandi", fiyat:500, fiyat_giren:"u1", musteri_teslim_tarihi:addDays(lastMon,3) });
   J({ urun:"14A Küpe", islem:"Kilit / klips", gonderilen_gram:1.2, donen_gram:1.2, verilis_tarihi:addDays(lastMon,2), donus_tarihi:addDays(lastMon,5), durum:"tamamlandi", fiyat:null }, {ad:"Hatice D.", telefon:"0533 222 33 44"});
   J({ urun:"14A Zincir", islem:"Zincir tamiri", gonderilen_gram:6.5, verilis_tarihi:addDays(t,-6), beklenen_tarih:addDays(t,-2), fiyat:300, fiyat_giren:"u2", fiyat_zamani:new Date().toISOString() }, {ad:"Zeynep A.", telefon:"0544 000 00 00"});
   J({ urun:"14A Tektaş Yüzük", islem:"Taş takma", aciklama:"Taş yerinden oynuyor, müşteri cumaya istiyor", gonderilen_gram:2.4, verilis_tarihi:addDays(t,-2), beklenen_tarih:addDays(t,3) }, {ad:"Elif S.", telefon:"0555 123 45 67"});
@@ -765,7 +767,7 @@ function pendingView(){
 function thumb(j){ const u = j.foto_path && S.urls[j.foto_path]; return `<div class="thumb">${u ? `<img src="${esc(u)}" loading="lazy" alt="">` : "◇"}</div>`; }
 function chips(j){ return j.islem ? `<div class="chips">${j.islem.split(",").map(s => s.trim()).filter(Boolean).map(s => `<span class="chip">${esc(s)}</span>`).join("")}</div>` : ""; }
 
-function jobCard(j, hazir){
+function jobCard(j, hazir, hizli){
   if(hazir) return hazirCard(j);
   const t = todayISO();
   const late = j.durum === "tamirde" && j.beklenen_tarih && j.beklenen_tarih < t;
@@ -785,7 +787,8 @@ function jobCard(j, hazir){
   const uzun = j.durum === "tamirde" && !j.beklenen_tarih && gun >= UYARI_GUN;
   if(uzun) right.push(`<span class="badge b-wait">Tarih yok · ${gun} gün</span>`);
   if(j.durum === "tamamlandi" && payOfJob(j)) right.push(`<span class="badge b-ok">Ödendi</span>`);
-  if(j.durum === "tamamlandi" && hasMusteri(j)) right.push(j.musteri_teslim_tarihi ? `<span class="badge b-gray">Müşteriye verildi${j.musteri?.imza_path ? " ✍" : ""}</span>` : `<span class="badge b-wait">Müşteri bekliyor</span>`);
+  if(j.durum === "tamamlandi") right.push(j.musteri_teslim_tarihi ? `<span class="badge b-gray">${hasMusteri(j) ? "Müşteriye verildi" : "Teslim alındı"}${j.musteri?.imza_path ? " ✍" : ""}</span>`
+                                                                   : `<span class="badge b-wait">${hasMusteri(j) ? "Müşteri bekliyor" : "Teslim bekliyor"}</span>`);
   return `<div class="job ${late ? "late" : uzun ? "uzun" : ""}" data-act="open-job" data-id="${j.id}">
     ${thumb(j)}
     <div class="jb">
@@ -793,6 +796,7 @@ function jobCard(j, hazir){
       ${chips(j)}
       <div class="jm">${gram ? gram + " · " : ""}${meta}</div>
       ${j.musteri && j.musteri.ad ? `<div class="jm cust">👤 ${esc(j.musteri.ad)}</div>` : ""}
+      ${hizli && j.durum === "tamirde" ? `<div class="cardbtns"><button class="btn sm" data-act="complete-hizli" data-id="${j.id}">✓ Tamirden geldi</button></div>` : ""}
     </div>
     <div class="jr">${right.join("")}</div>
   </div>`;
@@ -809,32 +813,33 @@ function tamirGecikmeleri(){
   return gecikmeBandi("tamir", [
     { baslik:"🔧 Beklenen dönüşü geçen", items:g1 },
     { baslik:`⏳ Dönüş tarihi yok, ${UYARI_GUN}+ gündür tamirde`, items:g2 },
-    { baslik:`🛍 Tamirden geldi, müşteri ${UYARI_GUN}+ gündür almadı`, items:g3 },
+    { baslik:`🛍 Tamirden geldi, ${UYARI_GUN}+ gündür teslim bekliyor`, items:g3 },
   ]);
 }
-const hazirList = () => S.closed.filter(j => j.durum === "tamamlandi" && !j.musteri_teslim_tarihi && hasMusteri(j))
+const hazirList = () => S.closed.filter(j => j.durum === "tamamlandi" && !j.musteri_teslim_tarihi)
   .sort((a,b) => (a.donus_tarihi || "").localeCompare(b.donus_tarihi || "") || a.id - b.id);
 function hazirCard(j){
   const gun = daysBetween(j.donus_tarihi || todayISO(), todayISO());
-  const ph = waPhone(j.musteri?.telefon), gec = gun >= UYARI_GUN;
+  const ph = waPhone(j.musteri?.telefon), gec = gun >= UYARI_GUN, m = hasMusteri(j);
   return `<div class="job ${gec ? "late" : ""}" data-act="open-job" data-id="${j.id}">
     ${thumb(j)}
     <div class="jb">
       <div class="jt"><span class="no">#${j.id}</span>${esc(j.urun)}</div>
-      <div class="jm cust">👤 ${esc(j.musteri.ad || "—")}${j.musteri.telefon ? " · " + esc(j.musteri.telefon) : ""}</div>
+      ${m ? `<div class="jm cust">👤 ${esc(j.musteri.ad || "—")}${j.musteri.telefon ? " · " + esc(j.musteri.telefon) : ""}</div>`
+          : `<div class="jm nocust">👤 Müşteri girilmedi <span class="muted">· eklemek için karta dokun</span></div>`}
       <div class="jm ${gec ? "gec" : ""}">Tamirden geldi ${fDate(j.donus_tarihi)} · ${gun === 0 ? "bugün" : gun + " gündür bekliyor"}</div>
-      <div class="jm">${j.musteri_haber ? `📨 Haber verildi · ${fDateTime(j.musteri_haber)}` : `<span style="color:var(--amber)">Henüz haber verilmedi</span>`}</div>
+      ${m ? `<div class="jm">${j.musteri_haber ? `📨 Haber verildi · ${fDateTime(j.musteri_haber)}` : `<span style="color:var(--amber)">Henüz haber verilmedi</span>`}</div>` : ""}
       <div class="cardbtns">
         ${ph ? `<button class="btn sm wa" data-act="wa" data-id="${j.id}">WhatsApp'tan haber ver</button>` : ""}
-        <button class="btn sm" data-act="mteslim" data-id="${j.id}">✓ Müşteriye teslim edildi</button>
+        <button class="btn sm" data-act="mteslim" data-id="${j.id}">${m ? "✓ Müşteriye teslim edildi" : "✓ Teslim alındı"}</button>
       </div>
     </div>
   </div>`;
 }
 function hazirView(){
-  const L = hazirList(), bekleyen = L.filter(j => !j.musteri_haber).length;
+  const L = hazirList(), bekleyen = L.filter(j => hasMusteri(j) && !j.musteri_haber).length;
   const pills = `<div class="summary">
-    <span class="pill"><b>${L.length}</b> ürün dükkanda, müşteri bekleniyor</span>
+    <span class="pill"><b>${L.length}</b> ürün dükkanda, teslim bekliyor</span>
     ${bekleyen ? `<span class="pill red"><b>${bekleyen}</b> müşteriye haber verilmedi</span>` : ""}
   </div>`;
   const band = tamirGecikmeleri();
@@ -854,7 +859,7 @@ function openView(){
   </div>`;
   const band = tamirGecikmeleri();
   if(!S.open.length) return band + pills + `<div class="empty">${isK() ? "Tamirde bekleyen iş yok.<br>Yeni iş eklemek için sağ alttaki <b>+ Yeni İş</b>." : "Bekleyen iş yok."}</div>`;
-  return band + pills + `<div class="list">${S.open.map(j => jobCard(j)).join("")}</div>`;
+  return band + pills + `<div class="list">${S.open.map(j => jobCard(j, false, isK())).join("")}</div>`;
 }
 
 function weeksView(){
@@ -996,15 +1001,15 @@ function jobForm(j){
       <div class="field"><label>Ad soyad</label><input name="m_ad" value="${esc(j.musteri?.ad || "")}"></div>
       <div class="field"><label>Telefon</label><input name="m_tel" type="tel" value="${esc(j.musteri?.telefon || "")}"></div>
     </div>
-    ${j.durum === "tamamlandi" ? teslimInfo(j) : `<div class="fire" style="margin-top:-6px">Müşteri girilirse, iş tamirden gelince <b>Teslime Hazır</b> listesine düşer.</div>`}
+    ${j.durum === "tamamlandi" ? teslimInfo(j) : `<div class="fire" style="margin-top:-6px">İş tamirden gelince <b>Teslime Hazır</b> listesine düşer. Müşteri girilirse WhatsApp'tan haber verme ve imzalı teslim de açılır.</div>`}
     <div class="actions">
       ${isNew ? `<button class="btn gold" type="submit">Kaydet</button><button class="btn" type="submit" data-fis="1">Kaydet + Emanet fişi</button>`
               : `<button class="btn gold" type="submit">Değişiklikleri kaydet</button>`}
       ${!isNew && j.durum === "tamirde" ? `<button class="btn" type="button" data-act="complete">✓ Tamirden geldi</button>` : ""}
     </div>
-    ${!isNew && j.durum === "tamamlandi" && hasMusteri(j) && !j.musteri_teslim_tarihi ? `<div class="actions">
+    ${!isNew && j.durum === "tamamlandi" && !j.musteri_teslim_tarihi ? `<div class="actions">
       ${waPhone(j.musteri?.telefon) ? `<button class="btn wa" type="button" data-act="wa" data-id="${j.id}">WhatsApp'tan haber ver</button>` : ""}
-      <button class="btn" type="button" data-act="mteslim" data-id="${j.id}">✓ Müşteriye teslim edildi</button>
+      <button class="btn" type="button" data-act="mteslim" data-id="${j.id}">${hasMusteri(j) ? "✓ Müşteriye teslim edildi" : "✓ Teslim alındı"}</button>
     </div>` : ""}
     ${!isNew ? `<div class="actions"><button class="btn ghost" type="button" data-act="fis" data-id="${j.id}">🧾 Emanet fişi</button></div>` : ""}
     ${!isNew ? `<div class="actions">
@@ -1017,14 +1022,15 @@ function jobForm(j){
 
 function teslimInfo(j){
   const haber = `<div class="fire">Haber verildi: <b>${j.musteri_haber ? esc(fTRsaat(j.musteri_haber)) : "henüz verilmedi"}</b></div>`;
-  if(!j.musteri_teslim_zamani && !j.musteri_teslim_tarihi) return hasMusteri(j) ? haber : "";
+  if(!j.musteri_teslim_zamani && !j.musteri_teslim_tarihi) return hasMusteri(j) ? haber
+    : `<div class="fire">Müşteri girilmedi. Ürün <b>Teslime Hazır</b> listesinde; müşteriye verilecekse adını yukarıya yazıp kaydet, dükkana alındıysa “Teslim alındı” de.</div>`;
   const imza = j.musteri && j.musteri.imza_path, u = imza && S.urls[imza];
   return `<div class="teslimbox">
-      ✓ Müşteriye teslim edildi: <b>${j.musteri_teslim_zamani ? esc(fTRsaat(j.musteri_teslim_zamani)) : esc(fTR(j.musteri_teslim_tarihi))}</b>
+      ✓ ${hasMusteri(j) ? "Müşteriye teslim edildi" : "Teslim alındı"}: <b>${j.musteri_teslim_zamani ? esc(fTRsaat(j.musteri_teslim_zamani)) : esc(fTR(j.musteri_teslim_tarihi))}</b>
       ${j.musteri_teslim_eden ? ` · teslim eden: <b>${esc(nameOf(j.musteri_teslim_eden) || "?")}</b>` : ""}
       ${imza ? (u ? `<img class="sigimg" src="${esc(u)}" alt="Müşteri imzası"><div class="fire" style="margin:0">Müşteri imzası</div>` : `<div class="fire" style="margin:0">İmza kayıtlı (yüklenemedi)</div>`)
              : `<div class="fire" style="margin:4px 0 0">${j.musteri_teslim_zamani ? "İmzasız teslim" : "Tarih elle girilmiş (imza yok)"}</div>`}
-    </div>${haber}`;
+    </div>${hasMusteri(j) ? haber : ""}`;
 }
 
 function openJobSheet(id){
@@ -1097,9 +1103,12 @@ async function saveJob(withFis){
   closeSheet(); await loadAll();
 }
 
-function openCompleteSheet(){
+function openCompleteSheet(id){
+  if(id != null){ // iş kartındaki düğmeden: formu açmadan
+    const k = findJob(id); if(!k || k.durum !== "tamirde") return;
+    SH = { job:k, pending:{ hizli:true, fields:{ verilis_tarihi:k.verilis_tarihi, gonderilen_gram:k.gonderilen_gram, donen_gram:k.donen_gram }, fiyat: k.fiyat == null ? null : Number(k.fiyat) } };
+  } else { try { SH.pending = readJobForm(); } catch(e){ return toast(e.message, true); } }
   const j = SH.job;
-  try { SH.pending = readJobForm(); } catch(e){ return toast(e.message, true); }
   const g = SH.pending.fields.gonderilen_gram, fi = SH.pending.fiyat, dg0 = SH.pending.fields.donen_gram;
   openSheet(`<div class="sh"><h2>Tamirden geldi · <span class="no">#${j.id}</span></h2><button class="x" data-act="close">✕</button></div>
     <form id="completeForm">
@@ -1125,8 +1134,8 @@ async function doComplete(){
   // Fiyatı önce gir (iş hâlâ 'tamirde'), sonra teslim al
   if((fi ?? null) !== (j.fiyat == null ? null : Number(j.fiyat))) await api.setPrice(j.id, fi);
   const photoOp = SH.photoBlob || (SH.photoRemove ? "remove" : null);
-  await api.updateJob(j.id, { ...P.fields, durum:"tamamlandi", donus_tarihi:f.elements.donus_tarihi.value, donen_gram:dg }, P.musteri, photoOp, j.foto_path);
-  toast(hasMusteri({ musteri:P.musteri }) ? `#${j.id} tamirden geldi · Teslime Hazır listesinde` : `#${j.id} tamirden geldi`); closeSheet(); await loadAll();
+  await api.updateJob(j.id, { ...(P.hizli ? {} : P.fields), durum:"tamamlandi", donus_tarihi:f.elements.donus_tarihi.value, donen_gram:dg }, P.hizli ? undefined : P.musteri, photoOp, j.foto_path);
+  toast(`#${j.id} tamirden geldi · Teslime Hazır listesinde`); closeSheet(); await loadAll();
 }
 
 function openPaySheet(mon){
@@ -1197,8 +1206,8 @@ function xlsxBlob(sheets){
 function durumText(j){
   if(j.durum === "tamirde") return "Tamirde";
   if(j.durum === "iptal") return "İptal";
-  if(j.musteri_teslim_tarihi) return "Müşteriye verildi";
-  return hasMusteri(j) ? "Müşteri bekliyor" : "Tamirden geldi";
+  if(j.musteri_teslim_tarihi) return hasMusteri(j) ? "Müşteriye verildi" : "Teslim alındı";
+  return hasMusteri(j) ? "Müşteri bekliyor" : "Teslim bekliyor";
 }
 function excelData(){
   const jobs = allJobs().slice().sort((a, b) => a.id - b.id), N = x => x == null ? null : { d:Number(x) }, T = x => x ? { t:x } : null;
@@ -1318,6 +1327,16 @@ async function openFis(id){
 /* ============ Müşteriye teslim: imza ============ */
 function openTeslimSheet(id){
   const j = findJob(id); if(!j) return;
+  if(!hasMusteri(j)){
+    SH = { teslim:{ id, pts:0 } };
+    return openSheet(`<div class="sh"><h2>Teslim · <span class="no">#${j.id}</span> ${esc(j.urun)}</h2><button class="x" data-act="close">✕</button></div>
+      <div class="info warn">Bu işte müşteri kaydı yok.</div>
+      <div class="fire">Ürün müşteriye verilecekse önce müşteri adını gir; böylece imza alınır ve fişe adı yazılır.</div>
+      <div class="actions">
+        <button class="btn" type="button" data-act="open-job" data-id="${j.id}">👤 Müşteri bilgisi ekle</button>
+        <button class="btn gold" type="button" data-act="teslim-musterisiz" data-id="${j.id}">✓ Teslim alındı (müşterisiz)</button>
+      </div>`);
+  }
   const ad = j.musteri?.ad || "Müşteri";
   SH = { teslim:{ id, pts:0 } };
   openSheet(`<div class="sh"><h2>Müşteriye teslim · <span class="no">#${j.id}</span></h2><button class="x" data-act="close">✕</button></div>
@@ -1357,8 +1376,9 @@ async function sigBlob(){
   return await new Promise(res => c.toBlob(res, "image/png"));
 }
 async function doDeliver(id, blob){
+  const m = hasMusteri(findJob(id) || {});
   const z = await api.deliver(id, blob);
-  closeSheet(); toast(`#${id} müşteriye teslim edildi · ${fTRsaat(z || new Date())}`); await loadAll();
+  closeSheet(); toast(`#${id} ${m ? "müşteriye teslim edildi" : "teslim alındı"} · ${fTRsaat(z || new Date())}`); await loadAll();
 }
 
 /* ============ Kullanıcı ekle ============ */
@@ -1524,6 +1544,7 @@ document.addEventListener("click", async e => {
     else if(a === "cam-file"){ camClose(); const i = $("#photoIn"); if(i) i.click(); }
     else if(a === "photo-rm"){ snapshotInputs(); SH.photoBlob = null; SH.photoPreview = null; SH.photoRemove = true; rerenderJobForm(); }
     else if(a === "complete") openCompleteSheet();
+    else if(a === "complete-hizli") openCompleteSheet(Number(el.dataset.id));
     else if(a === "cancel-job"){ const j = SH.job; if(await ask(`#${j.id} ${esc(j.urun)} iptal edilsin mi? (Tamirci de görür.)`, "İptal et", true)){ await api.updateJob(j.id, { durum:"iptal" }); toast("İptal edildi"); closeSheet(); await loadAll(); } }
     else if(a === "reopen"){ const j = SH.job; if(await ask(`#${j.id} tekrar 'tamirde' durumuna alınsın mı? Dönüş tarihi, dönen gram ve müşteri teslim bilgisi silinir.`, "Tamire geri al")){ await api.updateJob(j.id, { durum:"tamirde", donus_tarihi:null, donen_gram:null, musteri_teslim_tarihi:null, musteri_haber:null }); toast("Tamire geri alındı"); closeSheet(); await loadAll(); } }
     else if(a === "delete-job"){ const j = SH.job, imza = j.musteri && j.musteri.imza_path;
@@ -1553,6 +1574,7 @@ document.addEventListener("click", async e => {
       toast("Haber verildi olarak kaydedildi"); if(SH && SH.job) closeSheet(); await loadAll();
     }
     else if(a === "mteslim") openTeslimSheet(Number(el.dataset.id));
+    else if(a === "teslim-musterisiz"){ el.disabled = true; try { await doDeliver(Number(el.dataset.id), null); } catch(err){ el.disabled = false; throw err; } }
     else if(a === "sig-clear") SH.teslim.clear();
     else if(a === "sig-save"){ el.disabled = true; const id = SH.teslim.id;
       try { await doDeliver(id, await sigBlob()); } catch(err){ el.disabled = false; throw err; } }

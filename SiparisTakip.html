@@ -100,6 +100,8 @@
   .jt .no{color:var(--gold); margin-right:6px;}
   .jm{font-size:12.5px; color:var(--muted); margin-top:3px;}
   .jm.cust{color:var(--ink); opacity:.8;}
+  .jm.nocust{color:var(--amber);}
+  .jm .muted{color:var(--muted);}
   .jr{text-align:right; flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:6px;}
   .price{font-weight:700; font-size:16px; font-variant-numeric:tabular-nums;}
   .badge{display:inline-block; font-size:11px; font-weight:600; padding:3px 8px; border-radius:6px; letter-spacing:.3px; white-space:nowrap;}
@@ -836,6 +838,7 @@ function card(o, opts = {}){
           ${ph ? `<button class="btn sm wa" data-act="wa" data-id="${o.id}">WhatsApp'tan haber ver</button>` : ""}
           <button class="btn sm" data-act="teslim" data-id="${o.id}">✓ Müşteriye teslim et</button>
         </div>` : ""}
+      ${opts.toptanci && o.durum === "verildi" ? `<div class="cardbtns"><button class="btn sm" data-act="geldi-hizli" data-id="${o.id}">✓ Toptancıdan geldi</button></div>` : ""}
     </div>
     <div class="jr">${right.join("")}</div>
   </div>`;
@@ -860,7 +863,7 @@ function toptanciView(){
   </div>`;
   const band = siparisGecikmeleri();
   if(!all.length) return band + pills + `<div class="empty">Toptancıda bekleyen sipariş yok.<br>Yeni sipariş için sağ alttaki <b>+ Yeni Sipariş</b>.</div>`;
-  return band + segs + pills + `<div class="list">${L.map(o => card(o)).join("")}</div>`;
+  return band + segs + pills + `<div class="list">${L.map(o => card(o, { toptanci:true })).join("")}</div>`;
 }
 function geldiView(){
   const L = listGeldi(), bekleyen = L.filter(o => !o.musteri_haber && (o.musteri_ad || o.musteri_tel)).length;
@@ -1121,9 +1124,12 @@ async function saveOrder(withFis){
   if(withFis) await openFis(id);
 }
 
-function openGeldiSheet(){
+function openGeldiSheet(id){
+  if(id != null){ // sipariş kartındaki düğmeden: formu açmadan
+    const k = findO(id); if(!k || k.durum !== "verildi") return;
+    SH = { job:k, pending:{ hizli:true, fields:{ siparis_tarihi:k.siparis_tarihi, gram:k.gram, musteri_ad:k.musteri_ad, musteri_tel:k.musteri_tel } } };
+  } else { try { SH.pending = readOrderForm(); } catch(e){ return toast(e.message, true); } }
   const o = SH.job;
-  try { SH.pending = readOrderForm(); } catch(e){ return toast(e.message, true); }
   const gram0 = SH.pending.fields.gram;
   openSheet(`<div class="sh"><h2>Toptancıdan geldi · <span class="no">#${o.id}</span></h2><button class="x" data-act="close">✕</button></div>
     <form id="geldiForm">
@@ -1143,10 +1149,13 @@ async function doGeldi(){
   if(Number.isNaN(gg) || (gg != null && gg <= 0)) throw new Error("Gelen gram geçersiz.");
   if(!gt) throw new Error("Geliş tarihi gerekli.");
   if(gt < P.fields.siparis_tarihi) throw new Error("Geliş tarihi, sipariş tarihinden önce olamaz.");
-  await resolveRefs(P);
-  const photoOp = SH.photoBlob || (SH.photoRemove ? "remove" : null);
-  await api.updateOrder(o.id, { ...P.fields, durum:"geldi", gelis_tarihi:gt, gelen_gram:gg }, photoOp, o.foto_path);
-  if(P.pay) await api.addPayment(o.id, P.pay.tutar, P.pay.kur, P.pay.not);
+  if(P.hizli) await api.updateOrder(o.id, { durum:"geldi", gelis_tarihi:gt, gelen_gram:gg }, null, o.foto_path);
+  else {
+    await resolveRefs(P);
+    const photoOp = SH.photoBlob || (SH.photoRemove ? "remove" : null);
+    await api.updateOrder(o.id, { ...P.fields, durum:"geldi", gelis_tarihi:gt, gelen_gram:gg }, photoOp, o.foto_path);
+    if(P.pay) await api.addPayment(o.id, P.pay.tutar, P.pay.kur, P.pay.not);
+  }
   toast(`#${o.id} geldi · Geldi sekmesinde`); closeSheet(); await loadAll();
 }
 
@@ -1488,6 +1497,7 @@ document.addEventListener("click", async e => {
       if(await ask(`${fTL(p.tutar)} (${fHas(p.has_gram)}) ödeme kaydı silinsin mi?`, "Sil", true)){
         await api.deletePayment(p.id); await loadAll(); snapshotInputs(); SH.job = findO(o.id); rerenderJobForm(); toast("Ödeme kaydı silindi"); } }
     else if(a === "geldi-ac") openGeldiSheet();
+    else if(a === "geldi-hizli") openGeldiSheet(Number(el.dataset.id));
     else if(a === "iptal"){ const o = SH.job, od = odemeTop(o.id);
       if(await ask(`#${o.id} ${esc(o.urun)} iptal edilsin mi?${od.n ? `<br><br>Bu siparişte <b>${fTL(od.tl)}</b> ödeme kayıtlı. İade ettiysen <b>Özel notlar</b>'a yaz.` : ""}`, "İptal et", true)){
         await api.updateOrder(o.id, { durum:"iptal" }); toast("Sipariş iptal edildi"); closeSheet(); await loadAll(); } }
