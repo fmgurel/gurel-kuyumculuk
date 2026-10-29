@@ -258,6 +258,18 @@
   .addrow .field{margin-bottom:0;}
   @media (max-width:520px){ .addrow{grid-template-columns:1fr 1fr;} .addrow .btn{grid-column:1 / -1;} }
   .more{display:block; margin:14px auto 0;}
+  .hesap{border:1px solid var(--line); border-radius:12px; overflow:hidden; margin:4px 0 14px; background:var(--card);}
+  .hesap .hb{padding:10px 12px; border-bottom:1px solid var(--line);}
+  .hesap .hb:last-child{border-bottom:none;}
+  .hesap .ht{font-size:12px; color:var(--muted); margin-bottom:6px; letter-spacing:.03em;}
+  .hesap .hr{display:flex; justify-content:space-between; gap:10px; font-size:13.5px; padding:2px 0; font-variant-numeric:tabular-nums;}
+  .hesap .hr span:first-child{color:var(--muted);}
+  .hesap .hk{font-weight:700; padding-top:6px; margin-top:4px; border-top:1px dashed var(--line);}
+  .hesap .hk span:first-child{color:inherit;}
+  .hesap .kar .hk{border-top:none; margin-top:0; padding-top:0;}
+  .al{color:var(--amber);} .ve{color:var(--red);} .ok{color:#8fc79a;}
+  .milout{font-size:13px; color:var(--gold); margin:-4px 0 10px; min-height:18px;}
+  .jm.bakiye{font-size:12.5px;}
 </style>
 </head>
 <body>
@@ -550,6 +562,7 @@ function makeSupabaseApi(){
     async signOut(){ await sb.auth.signOut(); },
     async orders(){ return all(() => sb.from("siparisler").select("*").order("id", { ascending:false })); },
     async payments(){ return all(() => sb.from("siparis_odemeler").select("*").order("id")); },
+    async topPayments(){ return all(() => sb.from("siparis_toptanci_odemeler").select("*").order("id")); },
     async suppliers(){ return chk(await sb.from("tedarikciler").select("*").order("ad")); },
     async staff(){ return chk(await sb.from("calisanlar").select("*").order("ad")); },
     async profiles(){ return chk(await sb.from("profiles").select("id, username, role").order("created_at")); },
@@ -571,7 +584,7 @@ function makeSupabaseApi(){
     },
     async deleteOrder(id, files){
       const d = chk(await sb.from("siparisler").delete().eq("id", id).select("id"));
-      if(!d.length) throw new Error("Bu sipariş silinemez: ödemesi var veya teslim edilmiş. (Sadece yönetici silebilir.)");
+      if(!d.length) throw new Error("Bu sipariş silinemez: müşteri ya da toptancı ödemesi var veya teslim edilmiş. (Sadece yönetici silebilir.)");
       files = files.filter(Boolean); if(files.length) await sb.storage.from("foto").remove(files);
     },
     async addPayment(siparis_id, tutar, has_kuru, aciklama){
@@ -580,6 +593,14 @@ function makeSupabaseApi(){
     async deletePayment(id){
       const d = chk(await sb.from("siparis_odemeler").delete().eq("id", id).select("id"));
       if(!d.length) throw new Error("Bu ödeme silinemez: 24 saat geçmiş veya sipariş teslim edilmiş. (Sadece yönetici silebilir.)");
+    },
+    // Toptancıya ödeme: has olarak ya da TL + kur (TL ise has gramı sunucu hesaplar)
+    async addTopPayment(siparis_id, t){
+      chk(await sb.from("siparis_toptanci_odemeler").insert({ siparis_id, has_gram:t.has, tutar:t.tutar ?? null, has_kuru:t.kur ?? null, aciklama:t.not || null }).select("id").single());
+    },
+    async deleteTopPayment(id){
+      const d = chk(await sb.from("siparis_toptanci_odemeler").delete().eq("id", id).select("id"));
+      if(!d.length) throw new Error("Bu ödeme silinemez: 24 saat geçmiş. (Sadece yönetici silebilir.)");
     },
     // Müşteriye teslim: imza (varsa) depoya, saat sunucudan
     async deliver(id, blob){
@@ -615,11 +636,12 @@ function makeDemoApi(){
     { id:"u2", username:"usta", role:"tamirci", created_at: addDays(t,-59)+"T10:00:00" },
     { id:"u3", username:"ahmet", role:"kuyumcu", created_at: addDays(t,-30)+"T10:00:00" },
   ];
-  let me = null, seq = 1, pseq = 1, tseq = 1, cseq = 1;
-  const ted = [], cal = [], orders = [], pays = [];
+  let me = null, seq = 1, pseq = 1, tseq = 1, cseq = 1, tpseq = 1;
+  const ted = [], cal = [], orders = [], pays = [], tpays = [];
   const T = (ad, telefon) => { const x = { id:tseq++, ad, telefon:telefon || null, aktif:true, created_at:new Date().toISOString() }; ted.push(x); return x.id; };
   const C = (ad, profile_id) => { const x = { id:cseq++, ad, profile_id:profile_id || null, aktif:true, created_at:new Date().toISOString() }; cal.push(x); return x.id; };
-  const O = o => { const x = { id:seq++, ayar:null, gram:null, gelen_gram:null, tedarikci_id:null, calisan_id:null, musteri_ad:null, musteri_tel:null, notlar:null,
+  const TP = (siparis_id, has, tutar, kur, aciklama, alan, msAgo) => { tpays.push({ id:tpseq++, siparis_id, has_gram: tutar ? hasOf(tutar, kur) : has, tutar:tutar || null, has_kuru:kur || null, aciklama:aciklama || null, alan:alan || "u1", zaman:new Date(now - (msAgo || 0)).toISOString() }); };
+  const O = o => { const x = { id:seq++, ayar:null, gram:null, gelen_gram:null, milyem:null, satis_milyem:null, tedarikci_id:null, calisan_id:null, musteri_ad:null, musteri_tel:null, notlar:null,
       siparis_tarihi:t, beklenen_tarih:null, gelis_tarihi:null, durum:"verildi", foto_path:null, musteri_haber:null, teslim_zamani:null, teslim_tarihi:null,
       teslim_eden:null, imza_path:null, created_by:"u1", created_at:new Date().toISOString(), ...o }; orders.push(x); return x; };
   const P = (siparis_id, tutar, has_kuru, aciklama, alan, msAgo) => { pays.push({ id:pseq++, siparis_id, tutar, has_kuru, has_gram:hasOf(tutar, has_kuru), aciklama:aciklama || null, alan:alan || "u1", zaman:new Date(now - (msAgo || 0)).toISOString() }); };
@@ -627,15 +649,16 @@ function makeDemoApi(){
   const c1 = C("Ayşe"), c2 = C("Ahmet", "u3");
   const D = 86400000;
   let o;
-  o = O({ urun:"22A Burma bilezik", ayar:22, gram:20, tedarikci_id:t3, calisan_id:c1, musteri_ad:"Fatma K.", musteri_tel:"0532 111 22 33", siparis_tarihi:addDays(t,-6), beklenen_tarih:addDays(t,-1), notlar:"Bilek 6,5 cm" });
+  o = O({ urun:"22A Burma bilezik", ayar:22, gram:20, tedarikci_id:t3, calisan_id:c1, musteri_ad:"Fatma K.", musteri_tel:"0532 111 22 33", siparis_tarihi:addDays(t,-6), beklenen_tarih:addDays(t,-1), notlar:"Bilek 6,5 cm", milyem:0.935, satis_milyem:0.96 });
   P(o.id, 20000, 4350, "kapora", "u1", 6 * D);
-  o = O({ urun:"14A Kolye 45 cm", ayar:14, gram:6, tedarikci_id:t2, calisan_id:c2, musteri_ad:"Zeynep A.", musteri_tel:"0544 000 00 00", siparis_tarihi:addDays(t,-2), beklenen_tarih:addDays(t,4), created_by:"u3" });
+  o = O({ urun:"14A Kolye 45 cm", ayar:14, gram:6, tedarikci_id:t2, calisan_id:c2, musteri_ad:"Zeynep A.", musteri_tel:"0544 000 00 00", siparis_tarihi:addDays(t,-2), beklenen_tarih:addDays(t,4), created_by:"u3", milyem:0.64, satis_milyem:0.68 });
   P(o.id, 5000, 4410, null, "u3", 2 * D);
-  o = O({ urun:"İsimli kolye (Elif)", ayar:14, gram:3.5, tedarikci_id:t1, calisan_id:c1, musteri_ad:"Elif S.", musteri_tel:"0555 123 45 67", siparis_tarihi:addDays(t,-1), beklenen_tarih:addDays(t,6), notlar:"El yazısı model, zincir 40 cm" });
-  o = O({ urun:"22A Tektaş yüzük", ayar:22, gram:4, tedarikci_id:t1, calisan_id:c2, musteri_ad:"Hatice D.", musteri_tel:"0533 222 33 44", siparis_tarihi:addDays(t,-8), beklenen_tarih:addDays(t,-3), durum:"geldi", gelis_tarihi:addDays(t,-2), gelen_gram:4.12 });
-  P(o.id, 10000, 4300, "kapora", "u3", 8 * D);
+  o = O({ urun:"İsimli kolye (Elif)", ayar:14, gram:3.5, tedarikci_id:t1, calisan_id:c1, musteri_ad:"Elif S.", musteri_tel:"0555 123 45 67", siparis_tarihi:addDays(t,-1), beklenen_tarih:addDays(t,6), notlar:"El yazısı model, zincir 40 cm", milyem:0.66 });
+  o = O({ urun:"22A Tektaş yüzük", ayar:22, gram:4, tedarikci_id:t1, calisan_id:c2, musteri_ad:"Hatice D.", musteri_tel:"0533 222 33 44", siparis_tarihi:addDays(t,-8), beklenen_tarih:addDays(t,-3), durum:"geldi", gelis_tarihi:addDays(t,-2), gelen_gram:4.12, milyem:0.935, satis_milyem:0.97 });
+  P(o.id, 10000, 4300, "kapora", "u3", 8 * D); TP(o.id, null, 15000, 4300, "havale", "u1", 1 * D);
   o = O({ urun:"14A Küpe", ayar:14, gram:2, tedarikci_id:t2, calisan_id:c1, musteri_ad:"Ali V.", musteri_tel:"", siparis_tarihi:addDays(t,-5), durum:"geldi", gelis_tarihi:t });
-  o = O({ urun:"22A Ajda bilezik", ayar:22, gram:15, tedarikci_id:t3, calisan_id:c1, musteri_ad:"Sevgi T.", musteri_tel:"0536 777 88 99", siparis_tarihi:addDays(t,-20), beklenen_tarih:addDays(t,-12), durum:"teslim", gelis_tarihi:addDays(t,-13), gelen_gram:15.08, teslim_zamani:new Date(now - 10 * D).toISOString(), teslim_tarihi:addDays(t,-10), teslim_eden:"u1" });
+  o = O({ urun:"22A Ajda bilezik", ayar:22, gram:15, tedarikci_id:t3, calisan_id:c1, musteri_ad:"Sevgi T.", musteri_tel:"0536 777 88 99", siparis_tarihi:addDays(t,-20), beklenen_tarih:addDays(t,-12), durum:"teslim", gelis_tarihi:addDays(t,-13), gelen_gram:15.08, teslim_zamani:new Date(now - 10 * D).toISOString(), teslim_tarihi:addDays(t,-10), teslim_eden:"u1", milyem:0.93, satis_milyem:0.96 });
+  TP(o.id, 14.1, null, null, "hurda", "u1", 9 * D);
   P(o.id, 30000, 4250, "kapora", "u1", 20 * D); P(o.id, 35000, 4290, "teslimde kalan", "u1", 10 * D);
   o = O({ urun:"18A Alyans çifti", ayar:18, gram:9, tedarikci_id:t1, calisan_id:c2, musteri_ad:"Burak Y.", siparis_tarihi:addDays(t,-15), durum:"iptal", notlar:"Müşteri vazgeçti, kapora iade edildi" });
 
@@ -652,6 +675,7 @@ function makeDemoApi(){
     async signOut(){ me = null; },
     async orders(){ await sleep(); need(); return cp(orders).sort((a, b) => b.id - a.id); },
     async payments(){ need(); return cp(pays); },
+    async topPayments(){ need(); return cp(tpays); },
     async suppliers(){ need(); return cp(ted).sort((a, b) => a.ad.localeCompare(b.ad, "tr")); },
     async staff(){ need(); return cp(cal).sort((a, b) => a.ad.localeCompare(b.ad, "tr")); },
     async profiles(){ need(); return users.map(u => ({ id:u.id, username:u.username, role:u.role })); },
@@ -667,8 +691,9 @@ function makeDemoApi(){
     },
     async deleteOrder(id){
       need(); const x = orders.find(o => o.id === id);
-      if(!isY() && (x.durum === "teslim" || pays.some(p => p.siparis_id === id))) throw new Error("Bu sipariş silinemez: ödemesi var veya teslim edilmiş. (Sadece yönetici silebilir.)");
+      if(!isY() && (x.durum === "teslim" || pays.some(p => p.siparis_id === id) || tpays.some(p => p.siparis_id === id))) throw new Error("Bu sipariş silinemez: müşteri ya da toptancı ödemesi var veya teslim edilmiş. (Sadece yönetici silebilir.)");
       orders.splice(orders.indexOf(x), 1); for(let i = pays.length - 1; i >= 0; i--) if(pays[i].siparis_id === id) pays.splice(i, 1);
+      for(let i = tpays.length - 1; i >= 0; i--) if(tpays[i].siparis_id === id) tpays.splice(i, 1);
     },
     async addPayment(siparis_id, tutar, has_kuru, aciklama){
       need(); const x = orders.find(o => o.id === siparis_id);
@@ -681,6 +706,17 @@ function makeDemoApi(){
       const ok = isY() || (p.alan === me.id && Date.now() - new Date(p.zaman) < D && x.durum !== "teslim");
       if(!ok) throw new Error("Bu ödeme silinemez: 24 saat geçmiş veya sipariş teslim edilmiş. (Sadece yönetici silebilir.)");
       pays.splice(pays.indexOf(p), 1);
+    },
+    async addTopPayment(siparis_id, t){
+      need(); if(!orders.some(o => o.id === siparis_id)) throw new Error("Bu işlem için yetkin yok.");
+      if(t.tutar != null && !(t.kur > 0)) throw new Error("top_odm_tl_kur");
+      if(!((t.tutar != null ? hasOf(t.tutar, t.kur) : t.has) > 0)) throw new Error("Has sıfırdan büyük olmalı.");
+      TP(siparis_id, t.has, t.tutar, t.kur, t.not, me.id, 0);
+    },
+    async deleteTopPayment(id){
+      need(); const p = tpays.find(z => z.id === id);
+      if(!(isY() || (p.alan === me.id && Date.now() - new Date(p.zaman) < D))) throw new Error("Bu ödeme silinemez: 24 saat geçmiş. (Sadece yönetici silebilir.)");
+      tpays.splice(tpays.indexOf(p), 1);
     },
     async deliver(id, blob){
       need(); const x = orders.find(o => o.id === id);
@@ -721,7 +757,61 @@ const paysOf = id => S.pays.filter(p => p.siparis_id === id).sort((a, b) => Stri
 function odemeTop(id){ const L = paysOf(id); return { n:L.length, tl:Math.round(L.reduce((a, p) => a + Number(p.tutar), 0) * 100) / 100, has:r3(L.reduce((a, p) => a + Number(p.has_gram), 0)) }; }
 function sonKur(){ let b = null; S.pays.forEach(p => { if(!b || String(p.zaman) > String(b.zaman)) b = p; }); return b ? { kur:Number(b.has_kuru), zaman:b.zaman } : null; }
 const canDelPay = (p, o) => isY() || (p.alan === S.me.id && Date.now() - new Date(p.zaman).getTime() < 86400000 && o.durum !== "teslim");
-const canDelOrder = o => isY() || (o.durum !== "teslim" && odemeTop(o.id).n === 0);
+const canDelOrder = o => isY() || (o.durum !== "teslim" && odemeTop(o.id).n === 0 && topTop(o.id).n === 0);
+/* ---- Milyem ve hesap (has gram). Maliyet = gram × toptancı milyemi; satış = gram × satış milyemi ---- */
+function milyemOku(s){ const n = parseNum(s); if(n == null || Number.isNaN(n)) return n; const m = n >= 2 ? n / 1000 : n; return Math.round(m * 10000) / 10000; }
+const fMil = m => m == null ? "—" : Number(m).toLocaleString("tr-TR", { minimumFractionDigits:3, maximumFractionDigits:4 });
+const tpaysOf = id => (S.tpays || []).filter(p => p.siparis_id === id).sort((a, b) => String(a.zaman).localeCompare(String(b.zaman)) || a.id - b.id);
+function topTop(id){ const L = tpaysOf(id); return { n:L.length, has:r3(L.reduce((a, p) => a + Number(p.has_gram), 0)), tl:Math.round(L.reduce((a, p) => a + Number(p.tutar || 0), 0) * 100) / 100 }; }
+const canDelTopPay = p => isY() || (p.alan === S.me.id && Date.now() - new Date(p.zaman).getTime() < 86400000);
+function hesap(o){
+  const num = v => v == null || v === "" ? null : Number(v);
+  const gr = num(o.gram), gg = num(o.gelen_gram), m = num(o.milyem), sm = num(o.satis_milyem), iptal = o.durum === "iptal";
+  const tMal = gr != null && m != null ? r3(gr * m) : null, nMal = gg != null && m != null ? r3(gg * m) : null;
+  const tSat = gr != null && sm != null ? r3(gr * sm) : null, nSat = gg != null && sm != null ? r3(gg * sm) : null;
+  const mal = iptal ? 0 : (nMal ?? tMal), sat = iptal ? 0 : (nSat ?? tSat);
+  const topOd = topTop(o.id).has, musOd = odemeTop(o.id).has;
+  return { m, sm, tMal, nMal, tSat, nSat, mal, sat, topOd, musOd, net: gg != null, iptal,
+    topKalan: mal != null ? r3(mal - topOd) : null, musKalan: sat != null ? r3(sat - musOd) : null,
+    kar: !iptal && sat != null && mal != null ? r3(sat - mal) : null };
+}
+// [etiket, miktar, sınıf]: pozitif = biz ödeyeceğiz (toptancı) / biz alacağız (müşteri)
+const kalanTop = k => k == null ? null : k > 0.0005 ? ["Toptancıya verecek", fHas(k), "ve"] : k < -0.0005 ? ["Toptancıdan alacak", fHas(-k), "al"] : ["Toptancı hesabı kapandı", "✓", "ok"];
+const kalanMus = k => k == null ? null : k > 0.0005 ? ["Müşteriden alacak", fHas(k), "al"] : k < -0.0005 ? ["Müşteriye verecek", fHas(-k), "ve"] : ["Müşteri hesabı kapandı", "✓", "ok"];
+function hesapBox(o){
+  const h = hesap(o), R = (k, v, cls) => `<div class="hr ${cls || ""}"><span>${k}</span><span>${v}</span></div>`;
+  const kt = kalanTop(h.topKalan), km = kalanMus(h.musKalan);
+  const top = `<div class="hb"><div class="ht">TOPTANCI${h.m != null ? ` · milyem ${fMil(h.m)}` : ""}</div>
+    ${h.m == null ? `<div class="fire" style="margin:0 0 4px">Toptancı milyemi girilmedi.</div>` :
+      R("Tahmini maliyet (sipariş gramı × milyem)", h.tMal != null ? fHas(h.tMal) : "sipariş gramı yok") +
+      R("Net maliyet (gelen gram × milyem)", h.nMal != null ? fHas(h.nMal) : "henüz gelmedi")}
+    ${R("Toptancıya ödenen", fHas(h.topOd))}
+    ${kt ? R(kt[0], kt[1], "hk " + kt[2]) : ""}</div>`;
+  const mus = `<div class="hb"><div class="ht">MÜŞTERİ${h.sm != null ? ` · satış milyemi ${fMil(h.sm)}` : ""}</div>
+    ${h.sm == null ? `<div class="fire" style="margin:0 0 4px">Satış milyemi girilmedi; müşteri hesabı için yaz.</div>` :
+      R("Tahmini satış (sipariş gramı × milyem)", h.tSat != null ? fHas(h.tSat) : "sipariş gramı yok") +
+      R("Net satış (gelen gram × milyem)", h.nSat != null ? fHas(h.nSat) : "henüz gelmedi")}
+    ${R("Müşteriden alınan", fHas(h.musOd))}
+    ${km ? R(km[0], km[1], "hk " + km[2]) : ""}</div>`;
+  const kar = h.kar != null ? `<div class="hb kar">${R(h.net ? "Kâr (net)" : "Kâr (tahmini)", fHas(h.kar), "hk")}</div>` : "";
+  return `<div class="hesap">${h.iptal ? `<div class="hb fire" style="margin:0">İptal: maliyet ve satış 0 sayılır; kalan sadece ödemelerden.</div>` : ""}${top}${mus}${kar}</div>`;
+}
+function bakiyeSatir(o){
+  const h = hesap(o), p = [], km = kalanMus(h.musKalan), kt = kalanTop(h.topKalan);
+  if(km && km[2] !== "ok") p.push(`<span class="${km[2]}">${km[0]} ${km[1]}</span>`);
+  if(kt && kt[2] !== "ok") p.push(`<span class="${kt[2]}">${kt[0]} ${kt[1]}</span>`);
+  return p.length ? `<div class="jm bakiye">💰 ${p.join(" · ")}</div>` : "";
+}
+function milOnizle(){
+  const f = $("#orderForm"), out = f && f.querySelector("[data-milout]"); if(!out) return;
+  const g = parseNum(f.elements.gram.value), gg = f.elements.gelen_gram ? parseNum(f.elements.gelen_gram.value) : null;
+  const m = milyemOku(f.elements.milyem.value), sm = milyemOku(f.elements.satis_milyem.value), gr = gg > 0 ? gg : g, ad = gg > 0 ? "Net" : "Tahmini";
+  const ok = x => x != null && !Number.isNaN(x) && x >= 0.3 && x <= 1.5;
+  const p = [];
+  if(gr > 0 && ok(m)) p.push(`${ad} maliyet ${fHas(r3(gr * m))}`);
+  if(gr > 0 && ok(sm)) p.push(`${ad} satış ${fHas(r3(gr * sm))}`);
+  out.textContent = p.length ? "= " + p.join(" · ") : (m != null && !ok(m) ? "Milyem 0,300–1,500 arası olmalı (örn. 0,935 ya da 935)" : "");
+}
 const DURUM = { verildi:["Toptancıda","b-info"], geldi:["Geldi","b-wait"], teslim:["Teslim edildi","b-ok"], iptal:["İptal","b-gray"] };
 const gramText = o => o.gelen_gram != null ? fGr(o.gelen_gram) : (o.gram != null ? "≈ " + fGr(o.gram) : "");
 // Geldi/teslim kartında: sipariş ≈ gram → gelen (tartılan) gram ve farkı; gelen gram yoksa uyarı
@@ -749,8 +839,8 @@ function loadAll(silent){
     do {
       tekrarYukle = false;
       try{
-        const [orders, pays, ted, cal, profiles] = await Promise.all([api.orders(), api.payments(), api.suppliers(), api.staff(), api.profiles()]);
-        Object.assign(S, { orders, pays, ted, cal, profiles, fresh:false });
+        const [orders, pays, tpays, ted, cal, profiles] = await Promise.all([api.orders(), api.payments(), api.topPayments(), api.suppliers(), api.staff(), api.profiles()]);
+        Object.assign(S, { orders, pays, tpays, ted, cal, profiles, fresh:false });
       }catch(e){ if(!silent) toast(trErr(e), true); }
     } while(tekrarYukle);
     S.loading = false; yukleme = null;
@@ -892,6 +982,7 @@ function card(o, opts = {}){
       ${chips ? `<div class="chips">${chips}</div>` : ""}
       <div class="jm ${bekl ? "gec" : ""}">${meta}</div>
       ${gramFark(o)}
+      ${bakiyeSatir(o)}
       ${o.musteri_ad || o.musteri_tel ? `<div class="jm cust">👤 ${esc(o.musteri_ad || "—")}${o.musteri_tel ? " · " + esc(telGoster(o.musteri_tel)) : ""}</div>` : ""}
       ${cal ? `<div class="jm">Siparişi alan: ${esc(cal.ad)}</div>` : ""}
       ${opts.geldi ? `<div class="jm">${o.musteri_haber ? `📨 Haber verildi · ${fDateTime(o.musteri_haber)}` : `<span style="color:var(--amber)">Müşteriye henüz haber verilmedi</span>`}</div>
@@ -1011,6 +1102,11 @@ function updHas(){
     const tu = parseNum(f.elements.o_tutar?.value), ku = parseNum(f.elements.o_kur?.value);
     o.textContent = (tu > 0 && ku > 0) ? `= ${fHas(hasOf(tu, ku))}` : "";
   });
+  document.querySelectorAll("#sheet [data-thasout]").forEach(o => {
+    const f = o.closest("form"); if(!f) return;
+    const tu = parseNum(f.elements.t_tutar?.value), ku = parseNum(f.elements.t_kur?.value);
+    o.textContent = (tu > 0 && ku > 0) ? `= ${fHas(hasOf(tu, ku))}` : "";
+  });
 }
 function payList(o){
   const L = paysOf(o.id), top = odemeTop(o.id);
@@ -1023,6 +1119,43 @@ function payList(o){
     </div>`).join("")}
     <div class="paytot"><span>Toplam alınan (${L.length})</span><span><b>${fTL(top.tl)}</b> · <b style="color:var(--gold)">${fHas(top.has)}</b></span></div>
   </div>`;
+}
+
+function topPayList(o){
+  const L = tpaysOf(o.id), top = topTop(o.id);
+  if(!L.length) return `<div class="fire">Toptancıya henüz ödeme yapılmadı.</div>`;
+  return `<div class="paylist">${L.map(p => `<div class="payrow">
+      <div class="pi"><div>${esc(fDateTime(p.zaman))}${p.tutar != null ? ` · kur ${fTL(p.has_kuru)}` : " · has olarak"}</div>
+        <div class="pd">${esc(nameOf(p.alan) || "?")}${p.aciklama ? " · " + esc(p.aciklama) : ""}</div></div>
+      <div><div class="pt">${p.tutar != null ? fTL(p.tutar) : fHas(p.has_gram)}</div>${p.tutar != null ? `<div class="ph">${fHas(p.has_gram)}</div>` : ""}</div>
+      ${canDelTopPay(p) ? `<button type="button" class="iconbtn" data-act="tpay-del" data-pid="${p.id}" title="Ödemeyi sil" aria-label="Ödemeyi sil">🗑</button>` : "<span></span>"}
+    </div>`).join("")}
+    <div class="paytot"><span>Toplam ödenen (${L.length})</span><span>${top.tl ? `<b>${fTL(top.tl)}</b> · ` : ""}<b style="color:var(--gold)">${fHas(top.has)}</b></span></div>
+  </div>`;
+}
+function topPayInputs(){
+  const k = sonKur();
+  return `<div class="paybox">
+    <div class="ttl">Toptancıya ödeme ekle (Kaydet'e basınca eklenir) — has olarak <b>ya da</b> TL + kur</div>
+    <div class="field"><label>Has (gr)</label><input name="t_has" inputmode="decimal" placeholder="Örn. 10,000" autocomplete="off"></div>
+    <div class="row2">
+      <div class="field"><label>ya da TL (₺)</label><input name="t_tutar" inputmode="decimal" placeholder="0" autocomplete="off"></div>
+      <div class="field"><label>Has kuru (₺ / gr)</label><input name="t_kur" inputmode="decimal" placeholder="${k ? "Örn. " + esc(Number(k.kur).toLocaleString("tr-TR")) : "Örn. 4.350"}" autocomplete="off"></div>
+    </div>
+    <div class="hasout" data-thasout></div>
+    <div class="field"><label>Not (isteğe bağlı)</label><input name="t_not" placeholder="Örn. hurda, havale" autocomplete="off"></div>
+  </div>`;
+}
+function readTopPay(f){
+  if(!f.elements.t_has) return null;
+  const h = parseNum(f.elements.t_has.value), tu = parseNum(f.elements.t_tutar.value), ku = parseNum(f.elements.t_kur.value), not = f.elements.t_not.value.trim();
+  if(h == null && tu == null && ku == null) return null;
+  if(h != null && (tu != null || ku != null)) throw new Error("Toptancı ödemesi: ya has gram ya da TL + kur yaz, ikisini birden değil.");
+  if(h != null){ if(Number.isNaN(h) || h <= 0) throw new Error("Toptancı ödemesi: has gram geçersiz."); return { has:r3(h), tutar:null, kur:null, not }; }
+  if(tu == null || Number.isNaN(tu) || tu <= 0) throw new Error("Toptancı ödemesi: TL tutarı geçersiz.");
+  if(ku == null) throw new Error("Toptancı ödemesi için o anki has kurunu da yaz.");
+  if(Number.isNaN(ku) || ku <= 0) throw new Error("Toptancı ödemesi: has kuru geçersiz.");
+  return { has:hasOf(tu, ku), tutar:tu, kur:ku, not };
 }
 
 function selectTed(o){
@@ -1055,7 +1188,8 @@ function orderForm(o){
              siparis_tarihi:todayISO(), beklenen_tarih:null, durum:"verildi" };
   if(SH.ayar === undefined) SH.ayar = o.ayar ?? null;
   const geldi = o.durum === "geldi" || o.durum === "teslim";
-  const gelenAlan = !isNew && o.durum !== "iptal"; // toptancıdayken de istenirse yazılır (isteğe bağlı)
+  const gelenAlan = !isNew && o.durum !== "iptal";
+  const milZorunlu = isNew || o.durum === "verildi" || o.durum === "geldi"; // teslim/iptal eski kayıtlarda boş kalabilir // toptancıdayken de istenirse yazılır (isteğe bağlı)
   const ph = waPhone(o.musteri_tel);
   return `<form id="orderForm" autocomplete="off">
     ${photoBlock()}
@@ -1065,6 +1199,11 @@ function orderForm(o){
       <div class="field"><label>Gram (sipariş, yaklaşık)</label><input name="gram" inputmode="decimal" value="${esc(numIn(o.gram))}" placeholder="0,00"></div>
       ${gelenAlan || geldi ? `<div class="field"><label>Gelen gram (tartılan)${o.durum === "geldi" ? " *" : ""}</label><input name="gelen_gram" inputmode="decimal" value="${esc(numIn(o.gelen_gram))}" placeholder="${o.durum === "verildi" ? "İstenirse şimdi yaz" : "Tartıp yaz"}"${o.durum === "geldi" ? " required" : ""}></div>` : "<div></div>"}
     </div>
+    <div class="row2">
+      <div class="field"><label>Toptancı milyemi${milZorunlu ? " *" : ""}</label><input name="milyem" inputmode="decimal" value="${esc(o.milyem != null ? fMil(o.milyem) : "")}" placeholder="Örn. 0,935"${milZorunlu ? " required" : ""} autocomplete="off"></div>
+      <div class="field"><label>Satış milyemi (müşteri)</label><input name="satis_milyem" inputmode="decimal" value="${esc(o.satis_milyem != null ? fMil(o.satis_milyem) : "")}" placeholder="Örn. 0,960" autocomplete="off"></div>
+    </div>
+    <div class="milout" data-milout></div>
     <div class="row2">
       <div class="field"><label>Toptancı</label>${selectTed(o)}</div>
       <div class="field"><label>Siparişi alan *</label>${selectCal(o)}</div>
@@ -1087,6 +1226,8 @@ function orderForm(o){
     <div class="section">Müşteriden alınan ödeme</div>
     ${isNew ? "" : payList(o)}
     ${o.durum === "iptal" ? `<div class="fire">İptal edilen siparişe ödeme eklenemez.</div>` : payInputs(isNew ? "Kapora / ödeme (isteğe bağlı)" : "Yeni ödeme ekle (Kaydet'e basınca eklenir)")}
+    ${isNew ? "" : `<div class="section">Toptancıya ödeme</div>${topPayList(o)}${topPayInputs()}`}
+    ${isNew ? "" : `<div class="section">Hesap (has gram)</div>${hesapBox(o)}`}
     ${teslimInfo(o)}
     <div class="actions">
       ${isNew ? `<button class="btn gold" type="submit">Kaydet</button><button class="btn" type="submit" data-fis="1">Kaydet + Sipariş fişi</button>`
@@ -1127,12 +1268,12 @@ async function openOrder(id){
   if(!SH || SH.job !== o) return;
   const title = o ? `<span class="no">#${o.id}</span> ${esc(o.urun)}` : "Yeni sipariş";
   openSheet(`<div class="sh"><h2>${title}</h2>${o ? `<span class="badge ${DURUM[o.durum][1]}">${DURUM[o.durum][0]}</span>` : ""}<button class="x" data-act="close">✕</button></div>${orderForm(o)}`);
-  updYeni();
+  updYeni(); milOnizle();
 }
 function rerenderJobForm(){
   const f = $("#orderForm"); if(!f) return;
   const wrap = document.createElement("div"); wrap.innerHTML = orderForm(SH.job); f.replaceWith(wrap.firstElementChild);
-  restoreSheetInputs();
+  restoreSheetInputs(); updHas(); milOnizle();
 }
 
 function readOrderForm(){
@@ -1156,7 +1297,15 @@ function readOrderForm(){
     notlar:v("notlar") || null, musteri_ad:v("musteri_ad") || null, musteri_tel:telKaydet(v("musteri_tel")) };
   if(f.elements.gelen_gram) fields.gelen_gram = gg;
   if(v("gelis_tarihi") !== undefined) fields.gelis_tarihi = v("gelis_tarihi");
-  return { fields, pay:readPay(f), ted:{ sel:tedSel, yeni:v("ted_yeni") }, cal:{ sel:calSel, yeni:v("cal_yeni") } };
+  if(f.elements.milyem){
+    const mil = milyemOku(v("milyem")), smil = milyemOku(v("satis_milyem"));
+    const zor = !SH.job || SH.job.durum === "verildi" || SH.job.durum === "geldi"; // formdaki required ile aynı kural
+    if(mil == null && zor) throw new Error("Toptancı milyemi gerekli (örn. 0,935).");
+    if(Number.isNaN(mil) || (mil != null && (mil < 0.3 || mil > 1.5))) throw new Error("Toptancı milyemi geçersiz (örn. 0,935 ya da 935).");
+    if(Number.isNaN(smil) || (smil != null && (smil < 0.3 || smil > 1.5))) throw new Error("Satış milyemi geçersiz (örn. 0,960 ya da 960).");
+    fields.milyem = mil; fields.satis_milyem = smil;
+  }
+  return { fields, pay:readPay(f), tpay:readTopPay(f), ted:{ sel:tedSel, yeni:v("ted_yeni") }, cal:{ sel:calSel, yeni:v("cal_yeni") } };
 }
 // Formda "Yeni toptancı / çalışan" yazıldıysa önce listeye ekle (aynı ad varsa onu kullan)
 async function resolveRefs(R){
@@ -1181,7 +1330,8 @@ async function saveOrder(withFis){
     const photoOp = SH.photoBlob || (SH.photoRemove ? "remove" : null);
     await api.updateOrder(id, R.fields, photoOp, o.foto_path);
     if(R.pay) await api.addPayment(id, R.pay.tutar, R.pay.kur, R.pay.not);
-    toast(R.pay ? `#${id} güncellendi · ödeme eklendi` : `#${id} güncellendi`);
+    if(R.tpay) await api.addTopPayment(id, R.tpay);
+    toast(`#${id} güncellendi${R.pay ? " · müşteri ödemesi eklendi" : ""}${R.tpay ? " · toptancı ödemesi eklendi" : ""}`);
   }
   closeSheet(); await loadAll();
   if(withFis) await openFis(id);
@@ -1220,6 +1370,7 @@ async function doGeldi(){
     const photoOp = SH.photoBlob || (SH.photoRemove ? "remove" : null);
     await api.updateOrder(o.id, { ...P.fields, durum:"geldi", gelis_tarihi:gt, gelen_gram:gg }, photoOp, o.foto_path);
     if(P.pay) await api.addPayment(o.id, P.pay.tutar, P.pay.kur, P.pay.not);
+    if(P.tpay) await api.addTopPayment(o.id, P.tpay);
   }
   toast(`#${o.id} geldi · Geldi sekmesinde`); closeSheet(); await loadAll();
 }
@@ -1234,6 +1385,9 @@ function openTeslimSheet(id){
     <div class="kv"><span class="k">Müşteri</span><span>${esc(ad)}${o.musteri_tel ? " · " + esc(telGoster(o.musteri_tel)) : ""}</span>
       <span class="k">Ürün</span><span>${esc(o.urun)}${o.ayar ? " · " + o.ayar + " ayar" : ""}${gramText(o) ? " · " + esc(gramText(o)) : ""}</span>
       <span class="k">Alınan</span><span>${top.n ? `<b>${fTL(top.tl)}</b> · ${fHas(top.has)} (${top.n} ödeme)` : "Ödeme kaydı yok"}</span>
+      <span class="k">Müşteri hesabı</span><span>${(() => { const h = hesap(o), km = kalanMus(h.musKalan);
+        return h.sm == null ? `<span class="fire" style="margin:0">Satış milyemi girilmedi</span>`
+          : `${h.net ? "Net" : "Tahmini"} satış ${fHas(h.sat)} − alınan ${fHas(h.musOd)} → <b class="${km[2]}">${km[0]} ${km[1]}</b>`; })()}</span>
       <span class="k">Tarih / saat</span><span>${esc(fTRsaat(new Date()))} <span style="color:var(--muted)">(kayıt anında sunucudan alınır)</span></span></div>
     ${o.gelen_gram == null ? `<div class="info warn">Bu siparişte gelen gram girilmemiş. Teslimden önce tartıp yaz.</div>
       <div class="field"><label>Gelen gram (tartılan) *</label><input name="gelen_gram" inputmode="decimal" required placeholder="${o.gram != null ? "Sipariş ≈ " + esc(numIn(o.gram)) : "Tartıp yaz"}"></div>` : ""}
@@ -1400,18 +1554,22 @@ function durumText(o){ return DURUM[o.durum][0]; }
 function exportExcel(){
   const N = x => x == null ? null : { d:Number(x) }, T = x => x ? { t:x } : null;
   const orders = S.orders.slice().sort((a, b) => a.id - b.id);
-  const sip = [["Sipariş No","Sipariş tarihi","Ürün","Ayar","Gram (sipariş)","Gelen gram","Toptancı","Siparişi alan","Müşteri","Telefon","Özel notlar","Beklenen","Toptancıdan geliş","Durum","Haber verildi","Müşteriye teslim","Teslim saati","Teslim eden","İmza","Alınan ₺","Has gr","Ödeme sayısı"]];
-  orders.forEach(o => { const od = odemeTop(o.id);
-    sip.push([o.id, T(o.siparis_tarihi), o.urun, o.ayar || null, N(o.gram), N(o.gelen_gram), tedOf(o.tedarikci_id)?.ad || "", calOf(o.calisan_id)?.ad || "",
+  const sip = [["Sipariş No","Sipariş tarihi","Ürün","Ayar","Gram (sipariş)","Gelen gram","Toptancı milyemi","Satış milyemi","Toptancı","Siparişi alan","Müşteri","Telefon","Özel notlar","Beklenen","Toptancıdan geliş","Durum","Haber verildi","Müşteriye teslim","Teslim saati","Teslim eden","İmza",
+    "Müşteriden alınan ₺","Müşteriden alınan has","Tahmini maliyet has","Net maliyet has","Toptancıya ödenen has","Toptancı kalan has (+ verecek)","Tahmini satış has","Net satış has","Müşteri kalan has (+ alacak)","Kâr has"]];
+  orders.forEach(o => { const od = odemeTop(o.id), h = hesap(o);
+    sip.push([o.id, T(o.siparis_tarihi), o.urun, o.ayar || null, N(o.gram), N(o.gelen_gram), N(o.milyem), N(o.satis_milyem), tedOf(o.tedarikci_id)?.ad || "", calOf(o.calisan_id)?.ad || "",
       o.musteri_ad || "", o.musteri_tel || "", o.notlar || "", T(o.beklenen_tarih), T(o.gelis_tarihi), durumText(o),
       o.musteri_haber ? fTRsaat(o.musteri_haber) : "", T(o.teslim_tarihi), o.teslim_zamani ? fTRsaat(o.teslim_zamani).slice(11) : "",
-      o.teslim_eden ? nameOf(o.teslim_eden) : "", o.durum === "teslim" ? (o.imza_path ? "Var" : "Yok") : "", N(od.tl), N(od.has), od.n]); });
-  const odm = [["Ödeme No","Sipariş No","Ürün","Müşteri","Tarih","Saat","Tutar ₺","Has kuru ₺/gr","Has gr","Alan","Not"]];
-  S.pays.slice().sort((a, b) => String(a.zaman).localeCompare(String(b.zaman)) || a.id - b.id).forEach(p => { const o = findO(p.siparis_id) || {};
-    odm.push([p.id, p.siparis_id, o.urun || "", o.musteri_ad || "", T(isoOf(new Date(p.zaman))), fTRsaat(p.zaman).slice(11), N(p.tutar), N(p.has_kuru), N(p.has_gram), nameOf(p.alan), p.aciklama || ""]); });
+      o.teslim_eden ? nameOf(o.teslim_eden) : "", o.durum === "teslim" ? (o.imza_path ? "Var" : "Yok") : "",
+      N(od.tl), N(od.has), N(h.tMal), N(h.nMal), N(h.topOd), N(h.topKalan), N(h.tSat), N(h.nSat), N(h.musKalan), N(h.kar)]); });
+  const odm = [["Ödeme No","Taraf","Sipariş No","Ürün","Müşteri / Toptancı","Tarih","Saat","Tutar ₺","Has kuru ₺/gr","Has gr","Giren","Not"]];
+  [...S.pays.map(p => ({ ...p, taraf:"Müşteri" })), ...(S.tpays || []).map(p => ({ ...p, taraf:"Toptancı" }))]
+    .sort((a, b) => String(a.zaman).localeCompare(String(b.zaman)) || a.id - b.id).forEach(p => { const o = findO(p.siparis_id) || {};
+    odm.push([p.id, p.taraf, p.siparis_id, o.urun || "", p.taraf === "Müşteri" ? (o.musteri_ad || "") : (tedOf(o.tedarikci_id)?.ad || ""), T(isoOf(new Date(p.zaman))), fTRsaat(p.zaman).slice(11),
+      N(p.tutar), N(p.has_kuru), N(p.has_gram), nameOf(p.alan), p.aciklama || ""]); });
   const blob = xlsxBlob([
-    { name:"Siparişler", rows:sip, widths:[10,12,26,6,12,11,18,14,18,15,28,11,13,13,16,13,10,14,7,12,10,9] },
-    { name:"Ödemeler", rows:odm, widths:[9,10,26,18,11,7,12,13,10,14,22] },
+    { name:"Siparişler", rows:sip, widths:[10,12,26,6,12,11,11,11,18,14,18,15,28,11,13,13,16,13,10,14,7,13,13,13,13,13,14,13,13,14,10] },
+    { name:"Ödemeler", rows:odm, widths:[9,10,10,26,18,11,7,12,13,10,14,22] },
   ]);
   saveBlob(blob, `Siparis-Takip-${todayISO()}.xlsx`);
   toast("Excel dosyası indirildi");
@@ -1443,18 +1601,31 @@ async function renderFis(o){
     T(teslim ? "SİPARİŞ TESLİM FİŞİ" : "SİPARİŞ FİŞİ", 28, "700", INK, "center", y); y += 46;
     T(`Fiş No: #${o.id}`, 22, "700", INK, "left", y); T(`Tarih: ${fTR(o.siparis_tarihi)}`, 20, "400", INK, "right", y); y += 40;
     HR(y, LINE); y += 18;
-    const rows = [["Müşteri", o.musteri_ad || "—"], ["Telefon", telGoster(o.musteri_tel) || "—"], ["Ürün", o.urun]];
-    if(o.ayar) rows.push(["Ayar", `${o.ayar} ayar`]);
-    if(o.gelen_gram != null) rows.push(["Gram", fGr(o.gelen_gram)]); else if(o.gram != null) rows.push(["Gram (yaklaşık)", fGr(o.gram)]);
-    if(o.notlar) rows.push(["Özel notlar", o.notlar]);
-    if(!teslim) rows.push(["Tahmini geliş", o.beklenen_tarih ? fTR(o.beklenen_tarih) : "—"]);
-    if(cal) rows.push(["Siparişi alan", cal.ad]);
+    let rows;
+    if(teslim){ // müşteriye verilen teslim fişi
+      rows = [["Müşteri", o.musteri_ad || "—"], ["Telefon", telGoster(o.musteri_tel) || "—"], ["Ürün", o.urun]];
+      if(o.ayar) rows.push(["Ayar", `${o.ayar} ayar`]);
+      if(o.gelen_gram != null) rows.push(["Gram", fGr(o.gelen_gram)]); else if(o.gram != null) rows.push(["Gram (yaklaşık)", fGr(o.gram)]);
+      if(o.notlar) rows.push(["Özel notlar", o.notlar]);
+      if(cal) rows.push(["Siparişi alan", cal.ad]);
+    } else { // toptancıya gönderilen sipariş fişi: müşteri bilgisi ve müşteri ödemeleri YOK
+      const ted = tedOf(o.tedarikci_id), m = o.milyem != null ? Number(o.milyem) : null;
+      rows = [["Toptancı", ted ? ted.ad : "—"], ["Ürün", o.urun]];
+      if(o.ayar) rows.push(["Ayar", `${o.ayar} ayar`]);
+      if(o.gram != null) rows.push(["Gram (sipariş)", fGr(o.gram)]);
+      if(m != null) rows.push(["Milyem", fMil(m)]);
+      if(m != null && o.gram != null) rows.push(["Tahmini has", fHas(r3(Number(o.gram) * m))]);
+      if(o.gelen_gram != null){ rows.push(["Gelen gram", fGr(o.gelen_gram)]); if(m != null) rows.push(["Net has", fHas(r3(Number(o.gelen_gram) * m))]); }
+      if(o.notlar) rows.push(["Özel notlar", o.notlar]);
+      rows.push(["İstenen teslim", o.beklenen_tarih ? fTR(o.beklenen_tarih) : "—"]);
+    }
     const LW = 230;
     rows.forEach(([k, v]) => { x.font = F("600", 21); const lines = wrap(v, W - 2 * P - LW);
       T(k, 19, "400", MUT, "left", y + 2);
       lines.forEach((ln, i) => { if(!dry){ x.font = F("600", 21); x.fillStyle = INK; x.textAlign = "left"; x.fillText(ln, P + LW, y + i * 30); } });
       y += Math.max(1, lines.length) * 30 + 10; });
     y += 6; HR(y, LINE); y += 18;
+    if(teslim){
     T("ALINAN ÖDEMELER", 20, "700", INK, "left", y); y += 34;
     if(pays.length){
       const cx = [P, P + 250, P + 470, W - P];
@@ -1464,6 +1635,7 @@ async function renderFis(o){
       y += 4; HR(y, LINE); y += 12;
       T("Toplam", 19, "700", INK, "left", y, cx[0]); T(fTL(top.tl), 19, "700", INK, "right", y, cx[1] + 90); T(fHas(top.has), 19, "700", GOLD, "right", y, cx[3]); y += 40;
     } else { T("Ödeme alınmadı.", 18, "400", MUT, "left", y); y += 36; }
+    }
     if(foto){ y += 4; const maxW = W - 2 * P, maxH = 380, sc = Math.min(maxW / foto.width, maxH / foto.height, 1) || 1;
       const fw = foto.width * sc, fh = foto.height * sc;
       if(!dry){ x.drawImage(foto, (W - fw) / 2, y, fw, fh); x.strokeStyle = LINE; x.lineWidth = 1; x.strokeRect((W - fw) / 2, y, fw, fh); }
@@ -1480,11 +1652,11 @@ async function renderFis(o){
       else { T("(imzasız teslim)", 16, "400", MUT, "left", y); y += 30; }
     } else {
       HR(y, LINE); y += 18;
-      T("Siparişinizi teslim alırken lütfen bu fişi gösteriniz.", 18, "400", MUT, "center", y); y += 70;
+      T("Bu sipariş Gürel Kuyumculuk adına verilmiştir. Fiş No ile teslim ediniz.", 18, "400", MUT, "center", y); y += 70;
       const half = (W - 2 * P) / 2;
-      if(!dry){ x.strokeStyle = INK; x.lineWidth = 1; x.beginPath(); x.moveTo(P + 10, y); x.lineTo(P + half - 30, y); x.moveTo(P + half + 30, y); x.lineTo(W - P - 10, y); x.stroke();
+      if(!dry){ x.strokeStyle = INK; x.lineWidth = 1; x.beginPath(); x.moveTo(P + half / 2, y); x.lineTo(W - P - half / 2, y); x.stroke();
         x.font = F("400", 17); x.fillStyle = MUT; x.textAlign = "center"; x.textBaseline = "top";
-        x.fillText("Müşteri", P + half / 2, y + 10); x.fillText("Gürel Kuyumculuk", P + half * 1.5, y + 10); }
+        x.fillText("Gürel Kuyumculuk", W / 2, y + 10); }
       y += 40;
     }
     return y + P;
@@ -1572,6 +1744,10 @@ document.addEventListener("click", async e => {
       const o = SH.job, p = S.pays.find(x => x.id === Number(el.dataset.pid));
       if(await ask(`${fTL(p.tutar)} (${fHas(p.has_gram)}) ödeme kaydı silinsin mi?`, "Sil", true)){
         await api.deletePayment(p.id); await loadAll(); snapshotInputs(); SH.job = findO(o.id); rerenderJobForm(); toast("Ödeme kaydı silindi"); } }
+    else if(a === "tpay-del"){
+      const o = SH.job, p = (S.tpays || []).find(x => x.id === Number(el.dataset.pid));
+      if(p && await ask(`Toptancı ödemesi (${p.tutar != null ? fTL(p.tutar) + " · " : ""}${fHas(p.has_gram)}) silinsin mi?`, "Sil", true)){
+        await api.deleteTopPayment(p.id); await loadAll(); snapshotInputs(); SH.job = findO(o.id); rerenderJobForm(); toast("Toptancı ödemesi silindi"); } }
     else if(a === "geldi-ac") openGeldiSheet();
     else if(a === "geldi-hizli") openGeldiSheet(Number(el.dataset.id));
     else if(a === "iptal"){ const o = SH.job, od = odemeTop(o.id);
@@ -1654,7 +1830,8 @@ document.addEventListener("change", async e => {
   }catch(err){ toast(trErr(err), true); }
 });
 document.addEventListener("input", e => {
-  if(e.target.name === "o_tutar" || e.target.name === "o_kur") updHas();
+  if(["o_tutar", "o_kur", "t_tutar", "t_kur"].includes(e.target.name)) updHas();
+  if(["gram", "gelen_gram", "milyem", "satis_milyem"].includes(e.target.name)) milOnizle();
   if(e.target.id === "q"){ S.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $("#q"); if(q){ q.focus(); q.setSelectionRange(pos, pos); } }
 });
 
