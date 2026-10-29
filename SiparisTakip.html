@@ -270,6 +270,8 @@
   .hesap .hk span:first-child{color:inherit;}
   .hesap .kar .hk{border-top:none; margin-top:0; padding-top:0;}
   .hesap .hr.mo{padding-top:4px;}
+  .hesap .hr.kap{align-items:flex-start;}
+  .hesap .kd{display:block; font-size:12.5px; color:var(--ink); opacity:.85; font-variant-numeric:tabular-nums;}
   .hesap .hr.od{font-size:12.5px; padding-left:12px;}
   .hesap .hr.od span:last-child{color:var(--muted);}
   .al{color:var(--amber);} .ve{color:var(--red);} .ok{color:#8fc79a;}
@@ -986,12 +988,28 @@ function sadeGeldiCard(o){
   </div>`;
 }
 // Ayrıntılı hesap penceresi (Geldi kartındaki "Hesap" düğmesi): sadece görüntüleme; ödeme eklemek için sipariş açılır
+// Hesap sayfası (Mert): tek liste — Maliyet (net), Satış (net), Kapora satırları (gün/saat, kur, ödeme, has), Kâr. Gelen gram yoksa tahmini.
+function hesapListe(o){
+  const h = hesap(o), R = (k, v, cls) => `<div class="hr ${cls || ""}"><span>${k}</span><span>${v}</span></div>`;
+  const net = o.gelen_gram != null, g = net ? Number(o.gelen_gram) : (o.gram != null ? Number(o.gram) : null), ad = net ? "net" : "tahmini";
+  const mal = net ? h.nMal : h.tMal, sat = net ? h.nSat : h.tSat;
+  const sat_ = (lbl, m, v) => m == null ? R(lbl, `<span class="fire" style="margin:0">milyem girilmedi</span>`)
+    : g == null ? R(lbl, "gram yok") : R(`${lbl} <b class="hx">${fGr(g)} × ${fMil(m)}</b>`, fHas(v));
+  const L = paysOf(o.id);
+  return `<div class="hesap"><div class="hb">
+    ${sat_(`Maliyet (${ad})`, h.m, mal)}
+    ${sat_(`Satış (${ad})`, h.sm, sat)}
+    ${L.length ? L.map(p => R(`Kapora <b class="hx">${esc(fDateTime(p.zaman))}</b><span class="kd">${fTL(p.tutar)} · kur ${fTL(p.has_kuru)}</span>`, fHas(p.has_gram), "kap")).join("") : R("Kapora", "yok")}
+    ${sat != null ? (() => { const k = r3(sat - h.musOd); // kapora satıştan düşükse müşteri öder, yüksekse iade
+      return k > 0.0005 ? R("Müşteri ödemesi", fHas(k), "hk al") : k < -0.0005 ? R("Müşteriye iade", fHas(-k), "hk ve") : R("Müşteri hesabı kapandı", "✓", "hk ok"); })() : ""}
+    ${mal != null && sat != null ? R(`Kâr (${ad})`, fHas(r3(sat - mal)), "hk") : ""}
+  </div></div>`;
+}
 function openHesapSheet(id){
   const o = findO(id); if(!o) return;
   SH = { hesap:{ id } };
   openSheet(`<div class="sh"><h2>Hesap · ${esc(o.urun)}</h2><button class="x" data-act="close">✕</button></div>
-    ${hesapBox(o, true)}
-    ${topTop(o.id).n ? `<div class="section">Toptancıya ödeme</div>${topPayList(o, true)}` : ""}
+    ${hesapListe(o)}
     <div class="actions">
       <button class="btn gold" type="button" data-act="open" data-id="${o.id}">Siparişi aç · ödeme ekle</button>
       ${o.durum === "geldi" ? `<button class="btn" type="button" data-act="teslim" data-id="${o.id}">✓ Müşteriye teslim et</button>` : ""}
