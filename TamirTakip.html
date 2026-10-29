@@ -481,11 +481,11 @@ function uyariIslem(el){
   render();
 }
 // Sade kartlarda tarih satırı (Tamirde + Toptancıda): veriliş → beklenen; gecikme kırmızı, tarihsiz 7+ gün sarı
-function sadeTarih(verildi, beklenen, t){
+function sadeTarih(verildi, beklenen, t, etiket = "Verildi"){
   const late = beklenen && beklenen < t, gun = daysBetween(verildi, t), uzun = !beklenen && gun >= UYARI_GUN;
   const sag = beklenen ? `<span class="${late ? "tgec" : ""}">Teslim ${fDate(beklenen)}${late ? ` · ${daysBetween(beklenen, t)} gün geçti` : ""}</span>`
                        : `<span class="${uzun ? "tuyar" : "tyok"}">Teslim tarihi yok${uzun ? ` · ${gun} gündür` : ""}</span>`;
-  return { late, uzun, html:`<div class="jm sadet">Verildi ${fDate(verildi)} → ${sag}</div>` };
+  return { late, uzun, html:`<div class="jm sadet">${etiket} ${fDate(verildi)} → ${sag}</div>` };
 }
 // Müşteri telefonu: alan "905" ile hazır gelir, yazarken "905xx xxx xx xx" biçimine girer.
 // 0532… ya da 532… yazılır/yapıştırılırsa 90532…'ye çevrilir. Sadece "905" kalırsa boş sayılır.
