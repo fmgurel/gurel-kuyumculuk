@@ -101,6 +101,10 @@
   .jm{font-size:12.5px; color:var(--muted); margin-top:3px;}
   .jm.cust{color:var(--ink); opacity:.8;}
   .jm.gramyok{color:var(--amber);}
+  .job.sade .jt{font-size:16px;}
+  .jm.sadet .tgec{color:var(--red); font-weight:600;}
+  .jm.sadet .tuyar{color:var(--amber); font-weight:600;}
+  .jm.sadet .tyok{color:var(--faint);}
   .jm.nocust{color:var(--amber);}
   .jm .muted{color:var(--muted);}
   .jr{text-align:right; flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:6px;}
@@ -476,6 +480,13 @@ function uyariIslem(el){
   try { if(el.dataset.act === "uyari-gizle") localStorage.setItem(el.dataset.k, el.dataset.v); else localStorage.removeItem(el.dataset.k); } catch(_){}
   render();
 }
+// Sade kartlarda tarih satırı (Tamirde + Toptancıda): veriliş → beklenen; gecikme kırmızı, tarihsiz 7+ gün sarı
+function sadeTarih(verildi, beklenen, t){
+  const late = beklenen && beklenen < t, gun = daysBetween(verildi, t), uzun = !beklenen && gun >= UYARI_GUN;
+  const sag = beklenen ? `<span class="${late ? "tgec" : ""}">Teslim ${fDate(beklenen)}${late ? ` · ${daysBetween(beklenen, t)} gün geçti` : ""}</span>`
+                       : `<span class="${uzun ? "tuyar" : "tyok"}">Teslim tarihi yok${uzun ? ` · ${gun} gündür` : ""}</span>`;
+  return { late, uzun, html:`<div class="jm sadet">Verildi ${fDate(verildi)} → ${sag}</div>` };
+}
 /* ============ /Gecikme bandı ============ */
 
 /* ============ Veri katmanı: Supabase ============ */
@@ -776,8 +787,21 @@ function pendingView(){
 function thumb(j){ const u = j.foto_path && S.urls[j.foto_path]; return `<div class="thumb">${u ? `<img src="${esc(u)}" loading="lazy" alt="">` : "◇"}</div>`; }
 function chips(j){ return j.islem ? `<div class="chips">${j.islem.split(",").map(s => s.trim()).filter(Boolean).map(s => `<span class="chip">${esc(s)}</span>`).join("")}</div>` : ""; }
 
+// Sade kart (Tamirde sekmesi, kuyumcu): ürün, veriliş → beklenen tarih, müşteri adı, "Tamirden geldi"
+function sadeJobCard(j){
+  const d = sadeTarih(j.verilis_tarihi, j.beklenen_tarih, todayISO());
+  return `<div class="job sade ${d.late ? "late" : d.uzun ? "uzun" : ""}" data-act="open-job" data-id="${j.id}">
+    <div class="jb">
+      <div class="jt"><span class="no">#${j.id}</span>${esc(j.urun)}</div>
+      ${d.html}
+      ${j.musteri && j.musteri.ad ? `<div class="jm cust">👤 ${esc(j.musteri.ad)}</div>` : ""}
+      <div class="cardbtns"><button class="btn sm" data-act="complete-hizli" data-id="${j.id}">✓ Tamirden geldi</button></div>
+    </div>
+  </div>`;
+}
 function jobCard(j, hazir, hizli){
   if(hazir) return hazirCard(j);
+  if(hizli && j.durum === "tamirde") return sadeJobCard(j);
   const t = todayISO();
   const late = j.durum === "tamirde" && j.beklenen_tarih && j.beklenen_tarih < t;
   const gun = daysBetween(j.verilis_tarihi, j.durum === "tamirde" ? t : (j.donus_tarihi || t));
@@ -866,9 +890,9 @@ function openView(){
     ${late ? `<span class="pill red"><b>${late}</b> gecikmiş</span>` : ""}
     <span class="pill">Fiyatı girilen <b>${priced.length}</b>${priced.length ? ` · <b>${fTL(sum)}</b>` : ""}</span>
   </div>`;
-  const band = tamirGecikmeleri();
-  if(!S.open.length) return band + pills + `<div class="empty">${isK() ? "Tamirde bekleyen iş yok.<br>Yeni iş eklemek için sağ alttaki <b>+ Yeni İş</b>." : "Bekleyen iş yok."}</div>`;
-  return band + pills + `<div class="list">${S.open.map(j => jobCard(j, false, isK())).join("")}</div>`;
+  const band = tamirGecikmeleri(), ozet = isK() ? "" : pills; // kuyumcuda sade görünüm: özet satırı yok
+  if(!S.open.length) return band + ozet + `<div class="empty">${isK() ? "Tamirde bekleyen iş yok.<br>Yeni iş eklemek için sağ alttaki <b>+ Yeni İş</b>." : "Bekleyen iş yok."}</div>`;
+  return band + ozet + `<div class="list">${S.open.map(j => jobCard(j, false, isK())).join("")}</div>`;
 }
 
 function weeksView(){

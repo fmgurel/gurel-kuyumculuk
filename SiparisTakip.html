@@ -101,6 +101,10 @@
   .jm{font-size:12.5px; color:var(--muted); margin-top:3px;}
   .jm.cust{color:var(--ink); opacity:.8;}
   .jm.gramyok{color:var(--amber);}
+  .job.sade .jt{font-size:16px;}
+  .jm.sadet .tgec{color:var(--red); font-weight:600;}
+  .jm.sadet .tuyar{color:var(--amber); font-weight:600;}
+  .jm.sadet .tyok{color:var(--faint);}
   .jm.nocust{color:var(--amber);}
   .jm .muted{color:var(--muted);}
   .jr{text-align:right; flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:6px;}
@@ -373,6 +377,13 @@ function gecikmeBandi(app, gruplar){
 function uyariIslem(el){
   try { if(el.dataset.act === "uyari-gizle") localStorage.setItem(el.dataset.k, el.dataset.v); else localStorage.removeItem(el.dataset.k); } catch(_){}
   render();
+}
+// Sade kartlarda tarih satırı (Tamirde + Toptancıda): veriliş → beklenen; gecikme kırmızı, tarihsiz 7+ gün sarı
+function sadeTarih(verildi, beklenen, t){
+  const late = beklenen && beklenen < t, gun = daysBetween(verildi, t), uzun = !beklenen && gun >= UYARI_GUN;
+  const sag = beklenen ? `<span class="${late ? "tgec" : ""}">Teslim ${fDate(beklenen)}${late ? ` · ${daysBetween(beklenen, t)} gün geçti` : ""}</span>`
+                       : `<span class="${uzun ? "tuyar" : "tyok"}">Teslim tarihi yok${uzun ? ` · ${gun} gündür` : ""}</span>`;
+  return { late, uzun, html:`<div class="jm sadet">Verildi ${fDate(verildi)} → ${sag}</div>` };
 }
 /* ============ /Gecikme bandı ============ */
 
@@ -816,7 +827,20 @@ function siparisGecikmeleri(){
     { baslik:`🛍 Geldi, müşteri ${UYARI_GUN}+ gündür almadı`, items:g3 },
   ]);
 }
+// Sade kart (Toptancıda sekmesi): ürün, sipariş → beklenen tarih, müşteri adı, "Toptancıdan geldi"
+function sadeCard(o){
+  const d = sadeTarih(o.siparis_tarihi, o.beklenen_tarih, todayISO());
+  return `<div class="job sade ${d.late ? "late" : d.uzun ? "uzun" : ""}" data-act="open" data-id="${o.id}">
+    <div class="jb">
+      <div class="jt"><span class="no">#${o.id}</span>${esc(o.urun)}</div>
+      ${d.html}
+      ${o.musteri_ad ? `<div class="jm cust">👤 ${esc(o.musteri_ad)}</div>` : ""}
+      <div class="cardbtns"><button class="btn sm" data-act="geldi-hizli" data-id="${o.id}">✓ Toptancıdan geldi</button></div>
+    </div>
+  </div>`;
+}
 function card(o, opts = {}){
+  if(opts.toptanci && o.durum === "verildi") return sadeCard(o);
   const t = todayISO(), od = odemeTop(o.id), ted = tedOf(o.tedarikci_id), cal = calOf(o.calisan_id);
   const late = o.durum === "verildi" && o.beklenen_tarih && o.beklenen_tarih < t;
   let meta;
@@ -876,7 +900,7 @@ function toptanciView(){
   </div>`;
   const band = siparisGecikmeleri();
   if(!all.length) return band + pills + `<div class="empty">Toptancıda bekleyen sipariş yok.<br>Yeni sipariş için sağ alttaki <b>+ Yeni Sipariş</b>.</div>`;
-  return band + segs + pills + `<div class="list">${L.map(o => card(o, { toptanci:true })).join("")}</div>`;
+  return band + segs + `<div class="list">${L.map(o => card(o, { toptanci:true })).join("")}</div>`; // sade görünüm: özet satırı yok
 }
 function geldiView(){
   const L = listGeldi(), bekleyen = L.filter(o => !o.musteri_haber && (o.musteri_ad || o.musteri_tel)).length;
